@@ -1,0 +1,45 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "gestiones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "numero_orden", "order": "ASCENDING" },
+        { "fieldPath": "fecha_hora_gestion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gestiones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "usuario_responsable", "order": "ASCENDING" },
+        { "fieldPath": "fecha_hora_gestion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo_venta", "order": "ASCENDING" },
+        { "fieldPath": "fecha_venta", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "clientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "estatus_enrolamiento", "order": "ASCENDING" },
+        { "fieldPath": "fecha_actualizacion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bitacora_auditoria",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "modulo", "order": "ASCENDING" },
+        { "fieldPath": "fecha_hora", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

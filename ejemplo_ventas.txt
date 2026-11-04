@@ -1,0 +1,6 @@
+Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus
+2026-11-04 | 3005550101 | 3009990101 | ORD-2001 | Portabilidad | Enrolado
+2026-11-04 | 3005550102 | 3009990102 | ORD-2002 | Adición | No Enrolado
+2026-11-04 | 3005550103 | 3009990103 | ORD-2003 | Migración | Enrolado
+2026-10-25 | 3001234501 | 3009876501 | ORD-1001 | Portabilidad | No Enrolado
+2026-11-04 | 3005550104 | 3009990104 | ORD-2004 | Portabilidad | Enrolado
