@@ -4,6 +4,7 @@ import {
   getDocs,
   getDoc,
   setDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -452,6 +453,101 @@ export const dbService = {
     return clientes.find((c) => c.numero_orden === numeroOrden) || null;
   },
 
+  async eliminarCliente(numeroOrden: string, usuarioResponsable: string): Promise<void> {
+    const nowISO = new Date().toISOString();
+    const firestore = db;
+
+    if (isFirebaseConfigured() && firestore) {
+      try {
+        await deleteDoc(doc(firestore, 'clientes', numeroOrden));
+
+        const auditId = `aud_${Date.now()}`;
+        const auditRef = doc(firestore, 'bitacora_auditoria', auditId);
+        await setDoc(auditRef, {
+          id: auditId,
+          fecha_hora: nowISO,
+          usuario: usuarioResponsable,
+          modulo: 'Consultas y Filtros',
+          accion: 'Eliminación Individual de Cliente',
+          detalle: `Cliente con Número de Orden ${numeroOrden} eliminado permanentemente por el Administrador.`,
+        });
+        return;
+      } catch (e) {
+        console.warn('Firestore error in eliminarCliente, falling back to local:', e);
+      }
+    }
+
+    ensureMockStorageInitialized();
+    const clientes = getLocal<Cliente[]>(STORAGE_KEY_CLIENTES, []);
+    const filtrados = clientes.filter((c) => c.numero_orden !== numeroOrden);
+    setLocal(STORAGE_KEY_CLIENTES, filtrados);
+
+    const auditoria = getLocal<AuditoriaEvento[]>(STORAGE_KEY_AUDITORIA, []);
+    auditoria.unshift({
+      id: `aud_${Date.now()}`,
+      fecha_hora: nowISO,
+      usuario: usuarioResponsable,
+      modulo: 'Consultas y Filtros',
+      accion: 'Eliminación Individual de Cliente',
+      detalle: `Cliente con Número de Orden ${numeroOrden} eliminado permanentemente por el Administrador.`,
+    });
+    setLocal(STORAGE_KEY_AUDITORIA, auditoria);
+
+    emitLocalDbChange('cliente_eliminado');
+  },
+
+  async eliminarClientesMasivo(numerosOrden: string[], usuarioResponsable: string): Promise<number> {
+    const nowISO = new Date().toISOString();
+    const firestore = db;
+    const count = numerosOrden.length;
+    if (count === 0) return 0;
+
+    if (isFirebaseConfigured() && firestore) {
+      try {
+        const batch = writeBatch(firestore);
+        numerosOrden.forEach((num) => {
+          batch.delete(doc(firestore, 'clientes', num));
+        });
+
+        const auditId = `aud_${Date.now()}`;
+        const auditRef = doc(firestore, 'bitacora_auditoria', auditId);
+        batch.set(auditRef, {
+          id: auditId,
+          fecha_hora: nowISO,
+          usuario: usuarioResponsable,
+          modulo: 'Consultas y Filtros',
+          accion: 'Eliminación Masiva de Clientes',
+          detalle: `Eliminación masiva de ${count} clientes: ${numerosOrden.slice(0, 5).join(', ')}${count > 5 ? '...' : ''} por el Administrador.`,
+        });
+
+        await batch.commit();
+        return count;
+      } catch (e) {
+        console.warn('Firestore error in eliminarClientesMasivo, falling back to local:', e);
+      }
+    }
+
+    ensureMockStorageInitialized();
+    const clientes = getLocal<Cliente[]>(STORAGE_KEY_CLIENTES, []);
+    const setOrd = new Set(numerosOrden);
+    const filtrados = clientes.filter((c) => !setOrd.has(c.numero_orden));
+    setLocal(STORAGE_KEY_CLIENTES, filtrados);
+
+    const auditoria = getLocal<AuditoriaEvento[]>(STORAGE_KEY_AUDITORIA, []);
+    auditoria.unshift({
+      id: `aud_${Date.now()}`,
+      fecha_hora: nowISO,
+      usuario: usuarioResponsable,
+      modulo: 'Consultas y Filtros',
+      accion: 'Eliminación Masiva de Clientes',
+      detalle: `Eliminación masiva de ${count} clientes: ${numerosOrden.slice(0, 5).join(', ')}${count > 5 ? '...' : ''} por el Administrador.`,
+    });
+    setLocal(STORAGE_KEY_AUDITORIA, auditoria);
+
+    emitLocalDbChange('clientes_eliminados_masivo');
+    return count;
+  },
+
   async getGestionesCliente(numeroOrden: string): Promise<Gestion[]> {
     const firestore = db;
     if (isFirebaseConfigured() && firestore) {
@@ -531,7 +627,7 @@ export const dbService = {
             usuario: usuarioResponsable,
             modulo: 'Gestión de Barridos',
             accion: data.venta_cerrada === 'Sí' ? 'Cierre de Caso' : 'Registro de Gestión',
-            detalle: `Gestión registrada para orden ${data.numero_orden}. Motivo: ${data.motivo}. Venta Cerrada: ${data.venta_cerrada}.`,
+            detalle: `Gestión registrada para orden ${data.numero_orden}. Motivo: ${data.motivo}.${data.numero_manual !== undefined && data.numero_manual !== null ? ` N° seguimiento (1-30): ${data.numero_manual}.` : ''} Venta Cerrada: ${data.venta_cerrada}.`,
           });
         });
         return nuevaGestion;

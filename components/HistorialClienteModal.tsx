@@ -186,6 +186,12 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
                       {ultima.venta_cerrada}
                     </span>
                   </div>
+                  {ultima.numero_manual !== undefined && ultima.numero_manual !== null && (
+                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
+                      <span className="text-slate-400 block">N° Seguimiento</span>
+                      <span className="font-semibold text-blue-400 font-mono">#{ultima.numero_manual}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -254,6 +260,11 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
                         <span className="text-slate-400 text-[11px]">por {g.usuario_responsable}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
+                        {g.numero_manual !== undefined && g.numero_manual !== null && (
+                          <span className="text-[11px] px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-mono font-semibold" title="Número manual (1 al 30)">
+                            Seguimiento: #{g.numero_manual}
+                          </span>
+                        )}
                         <span className="text-[11px] px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 font-medium">
                           {g.estado}
                         </span>

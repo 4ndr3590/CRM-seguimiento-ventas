@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Cliente, EstadoLinea, MotivoGestion, TareaRealizada, TipoVenta, EstatusEnrolamiento } from '@/types/crm';
 import { exportarAExcel, exportarACSV } from '@/lib/exportUtils';
+import { dbService } from '@/lib/dbService';
 import {
   Search,
   Filter,
@@ -16,6 +17,10 @@ import {
   CheckCircle2,
   Clock,
   Layers,
+  Trash2,
+  X,
+  AlertCircle,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -32,7 +37,8 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
   onNuevaGestion,
   filtroInicialSinGestion = false,
 }) => {
-  const { permisos } = useAuth();
+  const { user, permisos } = useAuth();
+  const esAdmin = user?.rol === 'Administrador';
 
   // Filters State
   const [orden, setOrden] = useState('');
@@ -51,10 +57,17 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
   // Date filters
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
-  const [mesAno, setMesAno] = useState(''); // e.g. "2026-10"
+  const [mesAno, setMesAno] = useState('');
 
   // Advanced filters toggle
   const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
+
+  // Deletion state (Item 1)
+  const [seleccionados, setSeleccionados] = useState<string[]>([]);
+  const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null);
+  const [confirmandoMasivo, setConfirmandoMasivo] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
   const limpiarFiltros = () => {
     setOrden('');
@@ -115,7 +128,7 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
         if (!u || u.venta_cerrada !== ventaCerrada) return false;
       }
 
-      // 5. Date filters (evaluates fecha_venta or ultima_gestion.fecha_hora_gestion)
+      // 5. Date filters
       if (fechaDesde) {
         const fechaEval = u?.fecha_hora_gestion ? u.fecha_hora_gestion.split('T')[0] : c.fecha_venta;
         if (fechaEval < fechaDesde) return false;
@@ -148,6 +161,57 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
     mesAno,
   ]);
 
+  // Bulk Selection Handlers
+  const handleToggleSeleccionarTodos = () => {
+    if (seleccionados.length === resultados.length) {
+      setSeleccionados([]);
+    } else {
+      setSeleccionados(resultados.map((r) => r.numero_orden));
+    }
+  };
+
+  const handleToggleSeleccion = (numeroOrden: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSeleccionados((prev) =>
+      prev.includes(numeroOrden) ? prev.filter((id) => id !== numeroOrden) : [...prev, numeroOrden]
+    );
+  };
+
+  // Deletion Actions
+  const handleConfirmarEliminacionIndividual = async () => {
+    if (!clienteAEliminar) return;
+    setEliminando(true);
+    try {
+      const responsable = user?.nombre || user?.email || 'Administrador';
+      await dbService.eliminarCliente(clienteAEliminar.numero_orden, responsable);
+      setMensajeExito(`Cliente ${clienteAEliminar.numero_orden} eliminado permanentemente.`);
+      setSeleccionados((prev) => prev.filter((id) => id !== clienteAEliminar.numero_orden));
+      setClienteAEliminar(null);
+      setTimeout(() => setMensajeExito(null), 4000);
+    } catch (err: any) {
+      alert('Error al eliminar el cliente: ' + err.message);
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  const handleConfirmarEliminacionMasiva = async () => {
+    if (seleccionados.length === 0) return;
+    setEliminando(true);
+    try {
+      const responsable = user?.nombre || user?.email || 'Administrador';
+      const count = await dbService.eliminarClientesMasivo(seleccionados, responsable);
+      setMensajeExito(`Se eliminaron con éxito ${count} clientes seleccionados.`);
+      setSeleccionados([]);
+      setConfirmandoMasivo(false);
+      setTimeout(() => setMensajeExito(null), 4000);
+    } catch (err: any) {
+      alert('Error en la eliminación masiva: ' + err.message);
+    } finally {
+      setEliminando(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -162,8 +226,8 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
           </p>
         </div>
 
-        {/* Export Buttons */}
-        <div className="flex items-center gap-2">
+        {/* Export & Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
           {permisos.canExportar && (
             <>
               <button
@@ -186,6 +250,14 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
           )}
         </div>
       </div>
+
+      {/* Success Notification */}
+      {mensajeExito && (
+        <div className="bg-emerald-950/80 border border-emerald-700 text-emerald-300 px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 animate-fade-in shadow-lg">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          <span>{mensajeExito}</span>
+        </div>
+      )}
 
       {/* Filters Box */}
       <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4">
@@ -404,19 +476,57 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
         )}
       </div>
 
-      {/* Results Table */}
+      {/* Results Table Card */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <div>
-            Resultados: <strong className="text-white text-sm">{resultados.length}</strong> clientes encontrados
+        {/* Table Toolbar */}
+        <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+          <div className="flex items-center gap-3">
+            <div>
+              Resultados: <strong className="text-white text-sm">{resultados.length}</strong> clientes encontrados
+            </div>
+
+            {/* Bulk Deletion Pill for Admin (Item 1) */}
+            {esAdmin && seleccionados.length > 0 && (
+              <div className="flex items-center gap-2 animate-fade-in">
+                <button
+                  onClick={() => setConfirmandoMasivo(true)}
+                  className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold shadow-md shadow-rose-900/40 transition"
+                  title="Eliminar todos los clientes seleccionados"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar Seleccionados ({seleccionados.length})</span>
+                </button>
+                <button
+                  onClick={() => setSeleccionados([])}
+                  className="text-slate-400 hover:text-white underline text-[11px]"
+                >
+                  Deseleccionar
+                </button>
+              </div>
+            )}
           </div>
-          <span className="text-slate-500">Haz clic en "Ver Historial" para consultar trazabilidad completa (RN14)</span>
+
+          <span className="text-slate-500">
+            Haz clic en "Ver Historial" para consultar trazabilidad completa (RN14)
+          </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-800/80 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-700/60">
+                {/* Admin Select All Checkbox */}
+                {esAdmin && (
+                  <th className="py-3 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={resultados.length > 0 && seleccionados.length === resultados.length}
+                      onChange={handleToggleSeleccionarTodos}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-slate-900 border-slate-600 cursor-pointer"
+                      title="Seleccionar todos los clientes visibles para acción masiva"
+                    />
+                  </th>
+                )}
                 <th className="py-3 px-4">Orden (RN01)</th>
                 <th className="py-3 px-4">Fecha Venta</th>
                 <th className="py-3 px-4">DN Venta / Nuevo</th>
@@ -431,7 +541,7 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
             <tbody className="divide-y divide-slate-800/60 text-slate-300">
               {resultados.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500 text-sm">
+                  <td colSpan={esAdmin ? 10 : 9} className="py-12 text-center text-slate-500 text-sm">
                     No se encontraron clientes con los filtros seleccionados.
                   </td>
                 </tr>
@@ -440,13 +550,31 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                   const ultima = cliente.ultima_gestion;
                   const sinGestion = !ultima;
                   const cerrado = ultima?.venta_cerrada === 'Sí';
+                  const estaSeleccionado = seleccionados.includes(cliente.numero_orden);
 
                   return (
                     <tr
                       key={cliente.numero_orden}
-                      className="hover:bg-slate-800/50 transition cursor-pointer"
+                      className={`hover:bg-slate-800/50 transition cursor-pointer ${
+                        estaSeleccionado ? 'bg-slate-800/40' : ''
+                      }`}
                       onClick={() => onVerHistorial(cliente)}
                     >
+                      {/* Checkbox Individual (Solo Admin) */}
+                      {esAdmin && (
+                        <td
+                          className="py-3 px-3 text-center"
+                          onClick={(e) => handleToggleSeleccion(cliente.numero_orden, e)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={estaSeleccionado}
+                            onChange={() => {}}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-slate-900 border-slate-600 cursor-pointer"
+                          />
+                        </td>
+                      )}
+
                       {/* Orden */}
                       <td className="py-3 px-4 font-mono font-bold text-white whitespace-nowrap">
                         {cliente.numero_orden}
@@ -494,9 +622,14 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                             <span className="font-semibold text-white block">
                               {ultima.estado} ({ultima.recibio_chip})
                             </span>
-                            <span className="text-[10px] text-slate-500">
-                              {new Date(ultima.fecha_hora_gestion).toLocaleDateString('es-CO')}
-                            </span>
+                            <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                              <span>{new Date(ultima.fecha_hora_gestion).toLocaleDateString('es-CO')}</span>
+                              {ultima.numero_manual !== undefined && ultima.numero_manual !== null && (
+                                <span className="text-blue-400 font-mono font-bold">
+                                  &bull; #{ultima.numero_manual}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )}
                       </td>
@@ -553,6 +686,17 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                               <PlusCircle className="w-3.5 h-3.5" />
                             </button>
                           )}
+
+                          {/* Delete individual client (Admin only - Item 1) */}
+                          {esAdmin && (
+                            <button
+                              onClick={() => setClienteAEliminar(cliente)}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-transparent hover:border-rose-800 transition"
+                              title="Eliminar Cliente (Solo Administrador)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -563,6 +707,111 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Modal: Confirmación de Eliminación Individual */}
+      {clienteAEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-rose-900/60 w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-2.5 bg-rose-950/60 rounded-xl border border-rose-800/60">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">¿Eliminar Cliente?</h3>
+                <p className="text-xs text-rose-300/80">Acción exclusiva de Administrador</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              ¿Estás seguro de que deseas eliminar permanentemente el cliente con orden{' '}
+              <strong className="text-white font-mono">{clienteAEliminar.numero_orden}</strong>?
+            </p>
+
+            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-xs space-y-1 text-slate-400">
+              <div>Tipo: <strong className="text-slate-200">{clienteAEliminar.tipo_venta}</strong></div>
+              <div>DN: <strong className="text-slate-200">{clienteAEliminar.dn_venta || clienteAEliminar.dn_nuevo || '-'}</strong></div>
+              <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-800/80">
+                Esta acción quedará registrada en la bitácora de auditoría (RN11).
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setClienteAEliminar(null)}
+                disabled={eliminando}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarEliminacionIndividual}
+                disabled={eliminando}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-900/40 transition disabled:opacity-50"
+              >
+                {eliminando ? 'Eliminando...' : 'Sí, Eliminar Registro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmación de Eliminación Masiva */}
+      {confirmandoMasivo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-rose-900/60 w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-2.5 bg-rose-950/60 rounded-xl border border-rose-800/60">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">¿Eliminar Clientes en Lote?</h3>
+                <p className="text-xs text-rose-300/80">Eliminación Masiva por Administrador</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Estás a punto de eliminar permanentemente <strong className="text-rose-400 font-bold">{seleccionados.length}</strong> clientes de la base de datos.
+            </p>
+
+            <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-xs space-y-2">
+              <span className="text-[11px] text-slate-400 block font-semibold uppercase tracking-wider">
+                Órdenes seleccionadas ({seleccionados.length}):
+              </span>
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto font-mono text-[11px]">
+                {seleccionados.map((num) => (
+                  <span key={num} className="bg-slate-800 px-2 py-0.5 rounded text-slate-300 border border-slate-700">
+                    {num}
+                  </span>
+                ))}
+              </div>
+              <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-800/80">
+                Esta acción se registrará en bloque en la bitácora de auditoría (RN11).
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmandoMasivo(false)}
+                disabled={eliminando}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarEliminacionMasiva}
+                disabled={eliminando}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-900/40 transition disabled:opacity-50"
+              >
+                {eliminando ? 'Eliminando en lote...' : `Eliminar ${seleccionados.length} Registros`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

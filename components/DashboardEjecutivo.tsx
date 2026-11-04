@@ -48,6 +48,35 @@ const COLORS = [
   '#64748b', // slate
 ];
 
+const renderCompactPieLabel = ({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  percent,
+  name,
+}: any) => {
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 15;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  const percentStr = `${(percent * 100).toFixed(0)}%`;
+
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#e2e8f0"
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      style={{ fontSize: '10px', fontWeight: 600 }}
+    >
+      {`${name} ${percentStr}`}
+    </text>
+  );
+};
+
 export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
   clientes,
   todasGestiones,
@@ -356,18 +385,18 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Última gestión</span>
             </div>
-            <div className="h-52">
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
                   <Pie
                     data={stats.dataChip}
                     cx="50%"
                     cy="50%"
-                    innerRadius={45}
-                    outerRadius={70}
+                    innerRadius={36}
+                    outerRadius={54}
                     paddingAngle={4}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={renderCompactPieLabel}
                     labelLine={false}
                   >
                     <Cell fill="#10b981" />
@@ -394,18 +423,18 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Base Clientes</span>
             </div>
-            <div className="h-52">
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
                   <Pie
                     data={stats.dataEnrolamiento}
                     cx="50%"
                     cy="50%"
-                    innerRadius={45}
-                    outerRadius={70}
+                    innerRadius={36}
+                    outerRadius={54}
                     paddingAngle={4}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={renderCompactPieLabel}
                     labelLine={false}
                   >
                     <Cell fill="#059669" />
@@ -465,18 +494,18 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Activo/Inac/Predes</span>
             </div>
-            <div className="h-52">
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
                   <Pie
                     data={stats.dataEstado}
                     cx="50%"
                     cy="50%"
-                    innerRadius={40}
-                    outerRadius={68}
+                    innerRadius={32}
+                    outerRadius={50}
                     paddingAngle={3}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={renderCompactPieLabel}
                     labelLine={false}
                   >
                     {stats.dataEstado.map((entry, index) => (
@@ -537,18 +566,18 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Cerradas vs Activas</span>
             </div>
-            <div className="h-52">
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
                   <Pie
                     data={stats.dataVentasCerradas}
                     cx="50%"
                     cy="50%"
-                    innerRadius={45}
-                    outerRadius={70}
+                    innerRadius={36}
+                    outerRadius={54}
                     paddingAngle={4}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={renderCompactPieLabel}
                     labelLine={false}
                   >
                     <Cell fill="#10b981" />

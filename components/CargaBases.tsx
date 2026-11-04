@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import * as XLSX from 'xlsx';
 import { dbService } from '@/lib/dbService';
 import { useAuth } from '@/context/AuthContext';
 import { CargaResumen } from '@/types/crm';
@@ -14,6 +15,7 @@ import {
   Layers,
   ArrowRight,
   RefreshCw,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface CargaBasesProps {
@@ -34,20 +36,46 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
   const [resumen, setResumen] = useState<CargaResumen | null>(null);
   const [modoEntrada, setModoEntrada] = useState<'archivo' | 'pegar'>('archivo');
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setNombreArchivo(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      setContenidoTexto(text || '');
-    };
-    reader.readAsText(file);
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
+    if (ext === 'xlsx' || ext === 'xls') {
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+        // Convert Excel rows to pipe-delimited text layout
+        const lineas = rawRows
+          .map((row) =>
+            row
+              .map((cell: any) => String(cell !== undefined && cell !== null ? cell : '').trim())
+              .join(' | ')
+          )
+          .filter((line) => line.replace(/\|/g, '').trim().length > 0);
+
+        setContenidoTexto(lineas.join('\n'));
+      } catch (err: any) {
+        alert('Error al leer el archivo Excel: ' + err.message);
+      }
+    } else {
+      // Plain text or CSV
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result as string;
+        setContenidoTexto(text || '');
+      };
+      reader.readAsText(file);
+    }
   };
 
-  const handleDescargarPlantilla = () => {
+  const handleDescargarPlantillaTxt = () => {
     const blob = new Blob([PLANTILLA_TXT], { type: 'text/plain;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -58,9 +86,59 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
     document.body.removeChild(link);
   };
 
+  const handleDescargarPlantillaExcel = () => {
+    const datos = [
+      {
+        'Fecha Venta': '2026-11-04',
+        'DN de la Venta': '3005550101',
+        'DN Nuevo': '3009990101',
+        'Número de Orden': 'ORD-2001',
+        'Tipo de Venta': 'Portabilidad',
+        'Estatus': 'Enrolado',
+      },
+      {
+        'Fecha Venta': '2026-11-04',
+        'DN de la Venta': '3005550102',
+        'DN Nuevo': '3009990102',
+        'Número de Orden': 'ORD-2002',
+        'Tipo de Venta': 'Adición',
+        'Estatus': 'No Enrolado',
+      },
+      {
+        'Fecha Venta': '2026-11-04',
+        'DN de la Venta': '3005550103',
+        'DN Nuevo': '3009990103',
+        'Número de Orden': 'ORD-2003',
+        'Tipo de Venta': 'Migración',
+        'Estatus': 'Enrolado',
+      },
+      {
+        'Fecha Venta': '2026-10-25',
+        'DN de la Venta': '3001234501',
+        'DN Nuevo': '3009876501',
+        'Número de Orden': 'ORD-1001',
+        'Tipo de Venta': 'Portabilidad',
+        'Estatus': 'No Enrolado',
+      },
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Ventas');
+    ws['!cols'] = [
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 16 },
+    ];
+    XLSX.writeFile(wb, 'Plantilla_Carga_Ventas.xlsx');
+  };
+
   const handleProcesar = async () => {
     if (!contenidoTexto.trim()) {
-      alert('Por favor selecciona un archivo .txt o pega el contenido en el área de texto.');
+      alert('Por favor selecciona un archivo (.txt o .xlsx) o pega el contenido en el área de texto.');
       return;
     }
 
@@ -107,21 +185,30 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         <div>
           <h1 className="text-xl font-extrabold text-white flex items-center gap-2">
             <span className="w-2.5 h-6 bg-blue-600 rounded-full inline-block"></span>
-            Módulo 1: Carga y Actualización de Bases (.txt)
+            Módulo 1: Carga y Actualización de Bases (.txt y Excel .xlsx)
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Carga de archivos planos con validación de existencia por Número de Orden (RN01, RN08, RN09).
+            Carga de archivos planos o libros de Excel con validación de existencia por Número de Orden (RN01, RN08, RN09).
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={handleDescargarPlantilla}
+            onClick={handleDescargarPlantillaExcel}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-xs font-semibold rounded-xl border border-emerald-700 transition"
+            title="Descargar plantilla oficial en formato Microsoft Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Plantilla Excel (.xlsx)</span>
+          </button>
+
+          <button
+            onClick={handleDescargarPlantillaTxt}
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition"
             title="Descargar archivo .txt de ejemplo con el layout requerido"
           >
             <Download className="w-4 h-4 text-blue-400" />
-            <span>Descargar Plantilla .txt</span>
+            <span>Plantilla Texto (.txt)</span>
           </button>
 
           <button
@@ -139,13 +226,13 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-lg text-xs space-y-2">
           <h3 className="font-bold text-white flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            Layout Oficial Requerido (.txt)
+            Layout Oficial Requerido (.txt o .xlsx)
           </h3>
           <p className="text-slate-400">
-            Cada línea debe contener 6 campos separados por barra vertical <code>|</code>:
+            Cada fila debe contener 6 columnas exactas (en texto delimitadas por <code>|</code> o como columnas de Excel):
           </p>
           <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-blue-300 break-all">
-            Fecha Venta | DN Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus
+            Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus
           </div>
           <p className="text-[11px] text-slate-500">
             Valores válidos: Tipo de Venta: <em>Portabilidad, Adición, Migración</em>. Estatus: <em>Enrolado, No Enrolado</em>.
@@ -182,7 +269,7 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
               modoEntrada === 'archivo' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Subir Archivo .txt
+            Subir Archivo (.txt o Excel .xlsx)
           </button>
           <button
             onClick={() => setModoEntrada('pegar')}
@@ -199,14 +286,14 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
             <label className="border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer bg-slate-800/40 hover:bg-slate-800/70 transition group">
               <UploadCloud className="w-10 h-10 text-slate-400 group-hover:text-blue-400 mb-2 transition" />
               <span className="text-sm font-bold text-white mb-1">
-                {nombreArchivo ? nombreArchivo : 'Haz clic para seleccionar o arrastra un archivo .txt'}
+                {nombreArchivo ? nombreArchivo : 'Haz clic para seleccionar o arrastra un archivo .txt o .xlsx / .xls'}
               </span>
               <span className="text-xs text-slate-400">
-                Archivo plano delimitado por tubería (|) o tabuladores
+                Formatos compatibles: Texto delimitado (.txt, .csv) o Libro de Microsoft Excel (.xlsx, .xls)
               </span>
               <input
                 type="file"
-                accept=".txt"
+                accept=".txt,.xlsx,.xls,.csv"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -230,7 +317,7 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         {/* Process button */}
         <div className="flex items-center justify-between pt-2">
           <span className="text-xs text-slate-400">
-            {contenidoTexto ? `${contenidoTexto.split(/\r?\n/).filter((l) => l.trim()).length} líneas cargadas` : 'Sin contenido aún'}
+            {contenidoTexto ? `${contenidoTexto.split(/\r?\n/).filter((l) => l.trim()).length} registros preparados para procesar` : 'Sin contenido aún'}
           </span>
 
           <button

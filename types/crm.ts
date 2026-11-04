@@ -45,6 +45,7 @@ export interface Gestion {
   motivo: MotivoGestion;
   tarea_realizada: TareaRealizada;
   venta_cerrada: VentaCerrada;
+  numero_manual?: number | null; // Número manual del 1 al 30
   observaciones: string; // max 200 chars, mandatory
   usuario_responsable: string;
 }

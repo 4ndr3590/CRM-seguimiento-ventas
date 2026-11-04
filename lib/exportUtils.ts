@@ -28,6 +28,7 @@ export function exportarAExcel(
     'Última Gestión - Motivo': c.ultima_gestion?.motivo || 'Sin Gestión',
     'Última Gestión - Tarea Realizada': c.ultima_gestion?.tarea_realizada || 'Sin Gestión',
     'Última Gestión - Venta Cerrada': c.ultima_gestion?.venta_cerrada || 'Sin Gestión',
+    'Última Gestión - Número (1-30)': c.ultima_gestion?.numero_manual ?? 'NA',
     'Última Gestión - Responsable': c.ultima_gestion?.usuario_responsable || 'Sin Gestión',
     'Última Gestión - Observaciones': c.ultima_gestion?.observaciones || 'Sin Gestión',
     'Fecha Carga': c.fecha_carga ? new Date(c.fecha_carga).toLocaleString('es-CO') : '',
@@ -67,6 +68,7 @@ export function exportarACSV(
     'Motivo': c.ultima_gestion?.motivo || 'Sin Gestión',
     'Tarea_Realizada': c.ultima_gestion?.tarea_realizada || 'Sin Gestión',
     'Venta_Cerrada': c.ultima_gestion?.venta_cerrada || 'Sin Gestión',
+    'Numero_Manual_1_30': c.ultima_gestion?.numero_manual ?? '',
     'Usuario_Responsable': c.ultima_gestion?.usuario_responsable || 'Sin Gestión',
     'Observaciones': c.ultima_gestion?.observaciones ? `"${c.ultima_gestion.observaciones.replace(/"/g, '""')}"` : '""',
     'Fecha_Gestion': c.ultima_gestion?.fecha_hora_gestion || '',
@@ -102,6 +104,7 @@ export function exportarHistorialClienteAExcel(
     'Motivo': g.motivo,
     'Tarea Realizada': g.tarea_realizada,
     'Venta Cerrada': g.venta_cerrada,
+    'Número (1-30)': g.numero_manual ?? 'NA',
     'Usuario Responsable': g.usuario_responsable,
     'Observaciones': g.observaciones,
   }));
