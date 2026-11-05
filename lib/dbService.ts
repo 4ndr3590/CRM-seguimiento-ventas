@@ -214,6 +214,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 1',
       consumo: 'Sí',
       entrega_chip: 'CAC',
+      entregado: 'Sí',
       fecha_carga: formatISO(subDays(10)),
       fecha_actualizacion: formatISO(subHours(12)),
       ultima_gestion: gestiones[1],
@@ -228,6 +229,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 5',
       consumo: 'No',
       entrega_chip: 'Domicilio',
+      entregado: 'No',
       fecha_carga: formatISO(subDays(8)),
       fecha_actualizacion: formatISO(subDays(3)),
       ultima_gestion: gestiones[2],
@@ -242,6 +244,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 10',
       consumo: 'Sí',
       entrega_chip: 'Domicilio',
+      entregado: 'Sí',
       fecha_carga: formatISO(subDays(7)),
       fecha_actualizacion: formatISO(subDays(2)),
       ultima_gestion: gestiones[3],
@@ -256,6 +259,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 15',
       consumo: 'No',
       entrega_chip: 'CAC',
+      entregado: 'Caída',
       fecha_carga: formatISO(subDays(6)),
       fecha_actualizacion: formatISO(subDays(1)),
       ultima_gestion: gestiones[4],
@@ -270,6 +274,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 20',
       consumo: 'No',
       entrega_chip: 'Domicilio',
+      entregado: 'No',
       fecha_carga: formatISO(subDays(5)),
       fecha_actualizacion: formatISO(subHours(6)),
       ultima_gestion: gestiones[5],
@@ -284,6 +289,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 25',
       consumo: 'No',
       entrega_chip: 'CAC',
+      entregado: 'Caída',
       fecha_carga: formatISO(subDays(4)),
       fecha_actualizacion: formatISO(subHours(2)),
       ultima_gestion: gestiones[6],
@@ -299,6 +305,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 1',
       consumo: 'NA',
       entrega_chip: 'CAC',
+      entregado: 'Sí',
       fecha_carga: formatISO(subDays(2)),
       fecha_actualizacion: formatISO(subDays(2)),
       ultima_gestion: null,
@@ -313,6 +320,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 15',
       consumo: 'No',
       entrega_chip: 'Domicilio',
+      entregado: 'No',
       fecha_carga: formatISO(subDays(1)),
       fecha_actualizacion: formatISO(subDays(1)),
       ultima_gestion: null,
@@ -327,6 +335,7 @@ export function generateSeedData(): {
       ciclo: 'Ciclo 28',
       consumo: 'Sí',
       entrega_chip: 'CAC',
+      entregado: 'Sí',
       fecha_carga: formatISO(subHours(5)),
       fecha_actualizacion: formatISO(subHours(5)),
       ultima_gestion: null,
@@ -719,6 +728,7 @@ export const dbService = {
       ciclo?: string;
       consumo?: string;
       entrega_chip?: string;
+      entregado?: string;
     }[] = [];
 
     lineas.forEach((linea, index) => {
@@ -743,7 +753,7 @@ export const dbService = {
       if (parts.length < 6) {
         resumen.errores.push({
           linea: numLinea,
-          razon: `Fila incompleta. Se esperan las 9 columnas: Fecha Venta | DN Venta | DN Nuevo | Orden | Tipo Venta | Estatus | Ciclo | Consumo | Entrega Chip. Se recibieron ${parts.length}.`,
+          razon: `Fila incompleta. Se esperan las 10 columnas: Fecha Venta | DN Venta | DN Nuevo | Orden | Tipo Venta | Estatus | Ciclo | Consumo | Entrega Chip | Entregado. Se recibieron ${parts.length}.`,
           contenido: trimLine,
         });
         return;
@@ -759,11 +769,27 @@ export const dbService = {
         cicloRaw,
         consumoRaw,
         entregaChipRaw,
+        entregadoRaw,
       ] = parts;
       const numeroOrden = numeroOrdenRaw.trim();
       const ciclo = cicloRaw ? cicloRaw.trim() : '';
       const consumo = consumoRaw ? consumoRaw.trim() : 'NA';
       const entregaChip = entregaChipRaw ? entregaChipRaw.trim() : 'CAC';
+
+      // Normalizar 'entregado': Sí / No / Caída
+      let entregado = '';
+      if (entregadoRaw) {
+        const entLower = entregadoRaw.trim().toLowerCase();
+        if (entLower === 'si' || entLower === 'sí') {
+          entregado = 'Sí';
+        } else if (entLower === 'no') {
+          entregado = 'No';
+        } else if (entLower === 'caída' || entLower === 'caida') {
+          entregado = 'Caída';
+        } else {
+          entregado = entregadoRaw.trim();
+        }
+      }
 
       if (!numeroOrden) {
         resumen.errores.push({
@@ -812,6 +838,7 @@ export const dbService = {
           ciclo: ciclo || clienteMap.get(key)!.ciclo || '',
           consumo: consumo !== 'NA' ? consumo : (clienteMap.get(key)!.consumo || 'NA'),
           entrega_chip: entregaChip !== 'CAC' ? entregaChip : (clienteMap.get(key)!.entrega_chip || 'CAC'),
+          entregado: entregado || clienteMap.get(key)!.entregado || '',
         });
         resumen.actualizados++;
       } else {
@@ -825,6 +852,7 @@ export const dbService = {
           ciclo: ciclo,
           consumo: consumo,
           entrega_chip: entregaChip,
+          entregado: entregado,
           fecha_carga: nowISO,
           fecha_actualizacion: nowISO,
           ultima_gestion: null,
@@ -850,6 +878,7 @@ export const dbService = {
             ...(u.ciclo ? { ciclo: u.ciclo } : {}),
             ...(u.consumo ? { consumo: u.consumo } : {}),
             ...(u.entrega_chip ? { entrega_chip: u.entrega_chip } : {}),
+            ...(u.entregado ? { entregado: u.entregado } : {}),
             fecha_actualizacion: nowISO,
           });
         });
@@ -888,6 +917,7 @@ export const dbService = {
           ...(u.ciclo ? { ciclo: u.ciclo } : {}),
           ...(u.consumo ? { consumo: u.consumo } : {}),
           ...(u.entrega_chip ? { entrega_chip: u.entrega_chip } : {}),
+          ...(u.entregado ? { entregado: u.entregado } : {}),
           fecha_actualizacion: nowISO,
         });
       }

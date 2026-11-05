@@ -110,7 +110,7 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <span>1. Información General del Cliente</span>
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-2 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-10 gap-2 text-xs">
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
                 <span className="text-slate-400 block mb-0.5 text-[10px]">Número de Orden</span>
                 <span className="font-bold text-white text-xs">{cliente.numero_orden}</span>
@@ -156,6 +156,22 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
                 <span className="text-slate-400 block mb-0.5 text-[10px]">Entrega Chip</span>
                 <span className="font-semibold text-amber-300 text-xs">{cliente.entrega_chip || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Entregado</span>
+                <span
+                  className={`inline-block px-1.5 py-0.5 rounded font-medium text-[11px] ${
+                    cliente.entregado?.toLowerCase() === 'sí' || cliente.entregado?.toLowerCase() === 'si'
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700'
+                      : cliente.entregado?.toLowerCase() === 'caída' || cliente.entregado?.toLowerCase() === 'caida'
+                      ? 'bg-rose-950/80 text-rose-300 border border-rose-700'
+                      : cliente.entregado?.toLowerCase() === 'no'
+                      ? 'bg-amber-950/80 text-amber-300 border border-amber-700'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {cliente.entregado || '-'}
+                </span>
               </div>
             </div>
           </div>

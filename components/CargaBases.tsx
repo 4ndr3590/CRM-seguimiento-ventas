@@ -22,11 +22,11 @@ interface CargaBasesProps {
   onCargaCompleta: () => void;
 }
 
-const PLANTILLA_TXT = `Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip
-2026-11-04 | 3005550101 | 3009990101 | ORD-2001 | Portabilidad | Enrolado | Ciclo 1 | Sí | CAC
-2026-11-04 | 3005550102 | 3009990102 | ORD-2002 | Adición | No Enrolado | Ciclo 5 | No | Domicilio
-2026-11-04 | 3005550103 | 3009990103 | ORD-2003 | Migración | Enrolado | Ciclo 15 | Sí | CAC
-2026-10-25 | 3001234501 | 3009876501 | ORD-1001 | Portabilidad | No Enrolado | Ciclo 20 | No | Domicilio`;
+const PLANTILLA_TXT = `Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip | Entregado
+2026-11-04 | 3005550101 | 3009990101 | ORD-2001 | Portabilidad | Enrolado | Ciclo 1 | Sí | CAC | Sí
+2026-11-04 | 3005550102 | 3009990102 | ORD-2002 | Adición | No Enrolado | Ciclo 5 | No | Domicilio | No
+2026-11-04 | 3005550103 | 3009990103 | ORD-2003 | Migración | Enrolado | Ciclo 15 | Sí | CAC | Sí
+2026-10-25 | 3001234501 | 3009876501 | ORD-1001 | Portabilidad | No Enrolado | Ciclo 20 | No | Domicilio | Caída`;
 
 export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
   const { user, permisos } = useAuth();
@@ -98,6 +98,7 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Ciclo': 'Ciclo 1',
         'Consumo': 'Sí',
         'Entrega de Chip': 'CAC',
+        'Entregado': 'Sí',
       },
       {
         'Fecha Venta': '2026-11-04',
@@ -109,6 +110,7 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Ciclo': 'Ciclo 5',
         'Consumo': 'No',
         'Entrega de Chip': 'Domicilio',
+        'Entregado': 'No',
       },
       {
         'Fecha Venta': '2026-11-04',
@@ -120,6 +122,7 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Ciclo': 'Ciclo 15',
         'Consumo': 'Sí',
         'Entrega de Chip': 'CAC',
+        'Entregado': 'Sí',
       },
       {
         'Fecha Venta': '2026-10-25',
@@ -131,6 +134,7 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Ciclo': 'Ciclo 20',
         'Consumo': 'No',
         'Entrega de Chip': 'Domicilio',
+        'Entregado': 'Caída',
       },
     ];
 
@@ -147,6 +151,7 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
       { wch: 14 },
       { wch: 14 },
       { wch: 18 },
+      { wch: 14 },
     ];
     XLSX.writeFile(wb, 'Plantilla_Carga_Ventas.xlsx');
   };
@@ -244,13 +249,13 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
             Layout Oficial Requerido (.txt o .xlsx)
           </h3>
           <p className="text-slate-400">
-            Cada fila debe contener 9 columnas (en texto delimitadas por <code>|</code> o como columnas de Excel):
+            Cada fila debe contener 10 columnas (en texto delimitadas por <code>|</code> o como columnas de Excel):
           </p>
           <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-blue-300 break-all">
-            Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip
+            Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip | Entregado
           </div>
           <p className="text-[11px] text-slate-500">
-            Valores válidos: Tipo de Venta: <em>Portabilidad, Adición, Migración</em>. Estatus: <em>Enrolado, No Enrolado</em>. Consumo: <em>Sí, No, NA</em>. Entrega de Chip: <em>CAC, Domicilio</em>.
+            Valores válidos: Tipo de Venta: <em>Portabilidad, Adición, Migración</em>. Estatus: <em>Enrolado, No Enrolado</em>. Consumo: <em>Sí, No, NA</em>. Entrega de Chip: <em>CAC, Domicilio</em>. Entregado: <em>Sí, No, Caída</em>.
           </p>
         </div>
 

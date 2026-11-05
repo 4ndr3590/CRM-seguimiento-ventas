@@ -19,6 +19,7 @@ export function exportarAExcel(
     'Ciclo': c.ciclo || '',
     'Consumo Base': c.consumo || '',
     'Entrega Chip Base': c.entrega_chip || '',
+    'Entregado': c.entregado || '',
     'Tiene Gestión': c.ultima_gestion ? 'Sí' : 'Sin Gestión',
     'Última Gestión - Fecha': c.ultima_gestion?.fecha_hora_gestion
       ? new Date(c.ultima_gestion.fecha_hora_gestion).toLocaleString('es-CO')
@@ -67,6 +68,7 @@ export function exportarACSV(
     'Ciclo': c.ciclo || '',
     'Consumo_Base': c.consumo || '',
     'Entrega_Chip_Base': c.entrega_chip || '',
+    'Entregado': c.entregado || '',
     'Estado_Gestion': c.ultima_gestion?.estado || 'Sin Gestión',
     'Recibio_Chip': c.ultima_gestion?.recibio_chip || 'Sin Gestión',
     'Consumo': c.ultima_gestion?.consumo || 'Sin Gestión',

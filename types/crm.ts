@@ -21,6 +21,7 @@ export type TareaRealizada =
   | 'Mensaje de bienvenida'
   | 'Seguimiento primera factura';
 export type VentaCerrada = 'Sí' | 'No';
+export type EntregadoOpcion = 'Sí' | 'No' | 'Caída';
 
 export type RolUsuario = 'Administrador' | 'Analista' | 'Consulta';
 
@@ -59,6 +60,7 @@ export interface Cliente {
   ciclo?: string; // Ciclo de facturación / seguimiento
   consumo?: Consumo | string; // Consumo base cargado
   entrega_chip?: EntregaChip | string; // Entrega de chip base cargada
+  entregado?: EntregadoOpcion | string; // Estado de entrega base (Sí / No / Caída)
   fecha_carga: string;
   fecha_actualizacion: string;
   ultima_gestion?: Gestion | null; // Desnormalized latest management (RN04, RN12)

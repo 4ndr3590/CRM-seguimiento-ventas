@@ -1,6 +1,6 @@
-Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip
-2026-11-04 | 3005550101 | 3009990101 | ORD-2001 | Portabilidad | Enrolado | Ciclo 1 | Sí | CAC
-2026-11-04 | 3005550102 | 3009990102 | ORD-2002 | Adición | No Enrolado | Ciclo 5 | No | Domicilio
-2026-11-04 | 3005550103 | 3009990103 | ORD-2003 | Migración | Enrolado | Ciclo 15 | Sí | CAC
-2026-10-25 | 3001234501 | 3009876501 | ORD-1001 | Portabilidad | No Enrolado | Ciclo 20 | No | Domicilio
-2026-11-04 | 3005550104 | 3009990104 | ORD-2004 | Portabilidad | Enrolado | Ciclo 1 | Sí | CAC
+Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip | Entregado
+2026-11-04 | 3005550101 | 3009990101 | ORD-2001 | Portabilidad | Enrolado | Ciclo 1 | Sí | CAC | Sí
+2026-11-04 | 3005550102 | 3009990102 | ORD-2002 | Adición | No Enrolado | Ciclo 5 | No | Domicilio | No
+2026-11-04 | 3005550103 | 3009990103 | ORD-2003 | Migración | Enrolado | Ciclo 15 | Sí | CAC | Sí
+2026-10-25 | 3001234501 | 3009876501 | ORD-1001 | Portabilidad | No Enrolado | Ciclo 20 | No | Domicilio | Caída
+2026-11-04 | 3005550104 | 3009990104 | ORD-2004 | Portabilidad | Enrolado | Ciclo 1 | Sí | CAC | Sí

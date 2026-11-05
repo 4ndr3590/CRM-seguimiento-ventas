@@ -52,6 +52,7 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
 
   const [tipoVenta, setTipoVenta] = useState<string>('todos');
   const [enrolamiento, setEnrolamiento] = useState<string>('todos');
+  const [entregadoFiltro, setEntregadoFiltro] = useState<string>('todos');
   const [soloSinGestion, setSoloSinGestion] = useState<boolean>(filtroInicialSinGestion);
 
   // Date filters
@@ -79,6 +80,7 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
     setVentaCerrada('todos');
     setTipoVenta('todos');
     setEnrolamiento('todos');
+    setEntregadoFiltro('todos');
     setSoloSinGestion(false);
     setFechaDesde('');
     setFechaHasta('');
@@ -104,6 +106,19 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
       }
       if (enrolamiento !== 'todos' && c.estatus_enrolamiento !== enrolamiento) {
         return false;
+      }
+      if (entregadoFiltro !== 'todos') {
+        const entCliente = (c.entregado || '').toLowerCase();
+        const entFiltro = entregadoFiltro.toLowerCase();
+        if (entFiltro === 'sí' || entFiltro === 'si') {
+          if (entCliente !== 'sí' && entCliente !== 'si') return false;
+        } else if (entFiltro === 'no') {
+          if (entCliente !== 'no') return false;
+        } else if (entFiltro === 'caída' || entFiltro === 'caida') {
+          if (entCliente !== 'caída' && entCliente !== 'caida') return false;
+        } else {
+          if (entCliente !== entFiltro) return false;
+        }
       }
 
       // 3. RN13: Sin Gestión
@@ -151,6 +166,7 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
     dnNuevo,
     tipoVenta,
     enrolamiento,
+    entregadoFiltro,
     soloSinGestion,
     estado,
     motivo,
@@ -472,6 +488,22 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                 <option value="Seguimiento primera factura">Seguimiento primera factura</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">
+                Estado Entregado
+              </label>
+              <select
+                value={entregadoFiltro}
+                onChange={(e) => setEntregadoFiltro(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              >
+                <option value="todos">Todos (Entregado)</option>
+                <option value="Sí">Sí</option>
+                <option value="No">No</option>
+                <option value="Caída">Caída</option>
+              </select>
+            </div>
           </div>
         )}
       </div>
@@ -603,7 +635,7 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                         </span>
                       </td>
 
-                      {/* Enrolamiento */}
+                      {/* Enrolamiento y Entregado */}
                       <td className="py-3 px-4 whitespace-nowrap">
                         <span
                           className={`px-2 py-0.5 rounded font-medium text-[11px] ${
@@ -614,6 +646,21 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                         >
                           {cliente.estatus_enrolamiento}
                         </span>
+                        {cliente.entregado && (
+                          <div className="mt-1">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                                cliente.entregado.toLowerCase() === 'sí' || cliente.entregado.toLowerCase() === 'si'
+                                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
+                                  : cliente.entregado.toLowerCase() === 'caída' || cliente.entregado.toLowerCase() === 'caida'
+                                  ? 'bg-rose-950/60 text-rose-300 border-rose-700/60'
+                                  : 'bg-amber-950/60 text-amber-300 border-amber-700/60'
+                              }`}
+                            >
+                              Entregado: {cliente.entregado}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Última Gestión */}
