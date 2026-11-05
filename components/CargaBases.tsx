@@ -22,11 +22,11 @@ interface CargaBasesProps {
   onCargaCompleta: () => void;
 }
 
-const PLANTILLA_TXT = `Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus
-2026-11-04 | 3005550101 | 3009990101 | ORD-2001 | Portabilidad | Enrolado
-2026-11-04 | 3005550102 | 3009990102 | ORD-2002 | Adición | No Enrolado
-2026-11-04 | 3005550103 | 3009990103 | ORD-2003 | Migración | Enrolado
-2026-10-25 | 3001234501 | 3009876501 | ORD-1001 | Portabilidad | No Enrolado`;
+const PLANTILLA_TXT = `Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip
+2026-11-04 | 3005550101 | 3009990101 | ORD-2001 | Portabilidad | Enrolado | Ciclo 1 | Sí | CAC
+2026-11-04 | 3005550102 | 3009990102 | ORD-2002 | Adición | No Enrolado | Ciclo 5 | No | Domicilio
+2026-11-04 | 3005550103 | 3009990103 | ORD-2003 | Migración | Enrolado | Ciclo 15 | Sí | CAC
+2026-10-25 | 3001234501 | 3009876501 | ORD-1001 | Portabilidad | No Enrolado | Ciclo 20 | No | Domicilio`;
 
 export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
   const { user, permisos } = useAuth();
@@ -95,6 +95,9 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Número de Orden': 'ORD-2001',
         'Tipo de Venta': 'Portabilidad',
         'Estatus': 'Enrolado',
+        'Ciclo': 'Ciclo 1',
+        'Consumo': 'Sí',
+        'Entrega de Chip': 'CAC',
       },
       {
         'Fecha Venta': '2026-11-04',
@@ -103,6 +106,9 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Número de Orden': 'ORD-2002',
         'Tipo de Venta': 'Adición',
         'Estatus': 'No Enrolado',
+        'Ciclo': 'Ciclo 5',
+        'Consumo': 'No',
+        'Entrega de Chip': 'Domicilio',
       },
       {
         'Fecha Venta': '2026-11-04',
@@ -111,6 +117,9 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Número de Orden': 'ORD-2003',
         'Tipo de Venta': 'Migración',
         'Estatus': 'Enrolado',
+        'Ciclo': 'Ciclo 15',
+        'Consumo': 'Sí',
+        'Entrega de Chip': 'CAC',
       },
       {
         'Fecha Venta': '2026-10-25',
@@ -119,6 +128,9 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
         'Número de Orden': 'ORD-1001',
         'Tipo de Venta': 'Portabilidad',
         'Estatus': 'No Enrolado',
+        'Ciclo': 'Ciclo 20',
+        'Consumo': 'No',
+        'Entrega de Chip': 'Domicilio',
       },
     ];
 
@@ -132,6 +144,9 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
       { wch: 20 },
       { wch: 16 },
       { wch: 16 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 18 },
     ];
     XLSX.writeFile(wb, 'Plantilla_Carga_Ventas.xlsx');
   };
@@ -229,13 +244,13 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
             Layout Oficial Requerido (.txt o .xlsx)
           </h3>
           <p className="text-slate-400">
-            Cada fila debe contener 6 columnas exactas (en texto delimitadas por <code>|</code> o como columnas de Excel):
+            Cada fila debe contener 9 columnas (en texto delimitadas por <code>|</code> o como columnas de Excel):
           </p>
           <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-blue-300 break-all">
-            Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus
+            Fecha Venta | DN de la Venta | DN Nuevo | Número de Orden | Tipo de Venta | Estatus | Ciclo | Consumo | Entrega de Chip
           </div>
           <p className="text-[11px] text-slate-500">
-            Valores válidos: Tipo de Venta: <em>Portabilidad, Adición, Migración</em>. Estatus: <em>Enrolado, No Enrolado</em>.
+            Valores válidos: Tipo de Venta: <em>Portabilidad, Adición, Migración</em>. Estatus: <em>Enrolado, No Enrolado</em>. Consumo: <em>Sí, No, NA</em>. Entrega de Chip: <em>CAC, Domicilio</em>.
           </p>
         </div>
 

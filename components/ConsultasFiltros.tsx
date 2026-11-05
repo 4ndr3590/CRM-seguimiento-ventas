@@ -577,7 +577,12 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
 
                       {/* Orden */}
                       <td className="py-3 px-4 font-mono font-bold text-white whitespace-nowrap">
-                        {cliente.numero_orden}
+                        <div>{cliente.numero_orden}</div>
+                        {cliente.ciclo && (
+                          <span className="text-[10px] text-purple-400 font-sans font-normal block">
+                            {cliente.ciclo}
+                          </span>
+                        )}
                       </td>
 
                       {/* Fecha Venta */}
@@ -622,13 +627,8 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                             <span className="font-semibold text-white block">
                               {ultima.estado} ({ultima.recibio_chip})
                             </span>
-                            <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                            <div className="text-[10px] text-slate-500">
                               <span>{new Date(ultima.fecha_hora_gestion).toLocaleDateString('es-CO')}</span>
-                              {ultima.numero_manual !== undefined && ultima.numero_manual !== null && (
-                                <span className="text-blue-400 font-mono font-bold">
-                                  &bull; #{ultima.numero_manual}
-                                </span>
-                              )}
                             </div>
                           </div>
                         )}

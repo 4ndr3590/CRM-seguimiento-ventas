@@ -211,6 +211,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876501',
       tipo_venta: 'Portabilidad',
       estatus_enrolamiento: 'Enrolado',
+      ciclo: 'Ciclo 1',
+      consumo: 'Sí',
+      entrega_chip: 'CAC',
       fecha_carga: formatISO(subDays(10)),
       fecha_actualizacion: formatISO(subHours(12)),
       ultima_gestion: gestiones[1],
@@ -222,6 +225,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876502',
       tipo_venta: 'Adición',
       estatus_enrolamiento: 'No Enrolado',
+      ciclo: 'Ciclo 5',
+      consumo: 'No',
+      entrega_chip: 'Domicilio',
       fecha_carga: formatISO(subDays(8)),
       fecha_actualizacion: formatISO(subDays(3)),
       ultima_gestion: gestiones[2],
@@ -233,6 +239,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876503',
       tipo_venta: 'Migración',
       estatus_enrolamiento: 'Enrolado',
+      ciclo: 'Ciclo 10',
+      consumo: 'Sí',
+      entrega_chip: 'Domicilio',
       fecha_carga: formatISO(subDays(7)),
       fecha_actualizacion: formatISO(subDays(2)),
       ultima_gestion: gestiones[3],
@@ -244,6 +253,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876504',
       tipo_venta: 'Portabilidad',
       estatus_enrolamiento: 'No Enrolado',
+      ciclo: 'Ciclo 15',
+      consumo: 'No',
+      entrega_chip: 'CAC',
       fecha_carga: formatISO(subDays(6)),
       fecha_actualizacion: formatISO(subDays(1)),
       ultima_gestion: gestiones[4],
@@ -255,6 +267,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876505',
       tipo_venta: 'Adición',
       estatus_enrolamiento: 'Enrolado',
+      ciclo: 'Ciclo 20',
+      consumo: 'No',
+      entrega_chip: 'Domicilio',
       fecha_carga: formatISO(subDays(5)),
       fecha_actualizacion: formatISO(subHours(6)),
       ultima_gestion: gestiones[5],
@@ -266,6 +281,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876506',
       tipo_venta: 'Portabilidad',
       estatus_enrolamiento: 'No Enrolado',
+      ciclo: 'Ciclo 25',
+      consumo: 'No',
+      entrega_chip: 'CAC',
       fecha_carga: formatISO(subDays(4)),
       fecha_actualizacion: formatISO(subHours(2)),
       ultima_gestion: gestiones[6],
@@ -278,6 +296,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876507',
       tipo_venta: 'Portabilidad',
       estatus_enrolamiento: 'Enrolado',
+      ciclo: 'Ciclo 1',
+      consumo: 'NA',
+      entrega_chip: 'CAC',
       fecha_carga: formatISO(subDays(2)),
       fecha_actualizacion: formatISO(subDays(2)),
       ultima_gestion: null,
@@ -289,6 +310,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876508',
       tipo_venta: 'Migración',
       estatus_enrolamiento: 'No Enrolado',
+      ciclo: 'Ciclo 15',
+      consumo: 'No',
+      entrega_chip: 'Domicilio',
       fecha_carga: formatISO(subDays(1)),
       fecha_actualizacion: formatISO(subDays(1)),
       ultima_gestion: null,
@@ -300,6 +324,9 @@ export function generateSeedData(): {
       dn_nuevo: '3009876509',
       tipo_venta: 'Adición',
       estatus_enrolamiento: 'Enrolado',
+      ciclo: 'Ciclo 28',
+      consumo: 'Sí',
+      entrega_chip: 'CAC',
       fecha_carga: formatISO(subHours(5)),
       fecha_actualizacion: formatISO(subHours(5)),
       ultima_gestion: null,
@@ -627,7 +654,7 @@ export const dbService = {
             usuario: usuarioResponsable,
             modulo: 'Gestión de Barridos',
             accion: data.venta_cerrada === 'Sí' ? 'Cierre de Caso' : 'Registro de Gestión',
-            detalle: `Gestión registrada para orden ${data.numero_orden}. Motivo: ${data.motivo}.${data.numero_manual !== undefined && data.numero_manual !== null ? ` N° seguimiento (1-30): ${data.numero_manual}.` : ''} Venta Cerrada: ${data.venta_cerrada}.`,
+            detalle: `Gestión registrada para orden ${data.numero_orden}. Motivo: ${data.motivo}. Venta Cerrada: ${data.venta_cerrada}.`,
           });
         });
         return nuevaGestion;
@@ -686,7 +713,13 @@ export const dbService = {
     );
 
     const operacionesNuevas: Cliente[] = [];
-    const operacionesActualizar: { numero_orden: string; estatus: EstatusEnrolamiento }[] = [];
+    const operacionesActualizar: {
+      numero_orden: string;
+      estatus: EstatusEnrolamiento;
+      ciclo?: string;
+      consumo?: string;
+      entrega_chip?: string;
+    }[] = [];
 
     lineas.forEach((linea, index) => {
       const numLinea = index + 1;
@@ -710,14 +743,27 @@ export const dbService = {
       if (parts.length < 6) {
         resumen.errores.push({
           linea: numLinea,
-          razon: `Fila incompleta. Se esperan 6 columnas separadas por barra vertical '|', se recibieron ${parts.length}.`,
+          razon: `Fila incompleta. Se esperan las 9 columnas: Fecha Venta | DN Venta | DN Nuevo | Orden | Tipo Venta | Estatus | Ciclo | Consumo | Entrega Chip. Se recibieron ${parts.length}.`,
           contenido: trimLine,
         });
         return;
       }
 
-      const [fechaVenta, dnVenta, dnNuevo, numeroOrdenRaw, tipoVentaRaw, estatusRaw] = parts;
+      const [
+        fechaVenta,
+        dnVenta,
+        dnNuevo,
+        numeroOrdenRaw,
+        tipoVentaRaw,
+        estatusRaw,
+        cicloRaw,
+        consumoRaw,
+        entregaChipRaw,
+      ] = parts;
       const numeroOrden = numeroOrdenRaw.trim();
+      const ciclo = cicloRaw ? cicloRaw.trim() : '';
+      const consumo = consumoRaw ? consumoRaw.trim() : 'NA';
+      const entregaChip = entregaChipRaw ? entregaChipRaw.trim() : 'CAC';
 
       if (!numeroOrden) {
         resumen.errores.push({
@@ -763,6 +809,9 @@ export const dbService = {
         operacionesActualizar.push({
           numero_orden: clienteMap.get(key)!.numero_orden,
           estatus,
+          ciclo: ciclo || clienteMap.get(key)!.ciclo || '',
+          consumo: consumo !== 'NA' ? consumo : (clienteMap.get(key)!.consumo || 'NA'),
+          entrega_chip: entregaChip !== 'CAC' ? entregaChip : (clienteMap.get(key)!.entrega_chip || 'CAC'),
         });
         resumen.actualizados++;
       } else {
@@ -773,6 +822,9 @@ export const dbService = {
           dn_nuevo: dnNuevo || '',
           tipo_venta: tipoVenta,
           estatus_enrolamiento: estatus,
+          ciclo: ciclo,
+          consumo: consumo,
+          entrega_chip: entregaChip,
           fecha_carga: nowISO,
           fecha_actualizacion: nowISO,
           ultima_gestion: null,
@@ -795,6 +847,9 @@ export const dbService = {
           const ref = doc(firestore, 'clientes', u.numero_orden);
           batch.update(ref, {
             estatus_enrolamiento: u.estatus,
+            ...(u.ciclo ? { ciclo: u.ciclo } : {}),
+            ...(u.consumo ? { consumo: u.consumo } : {}),
+            ...(u.entrega_chip ? { entrega_chip: u.entrega_chip } : {}),
             fecha_actualizacion: nowISO,
           });
         });
@@ -806,8 +861,8 @@ export const dbService = {
           fecha_hora: nowISO,
           usuario: usuarioResponsable,
           modulo: 'Carga de Bases',
-          accion: 'Procesamiento TXT',
-          detalle: `Carga de archivo finalizada: ${resumen.totalLeidos} leídos, ${resumen.creados} nuevos, ${resumen.actualizados} actualizados, ${resumen.errores.length} errores.`,
+          accion: 'Procesamiento de Archivo',
+          detalle: `Carga de base finalizada: ${resumen.totalLeidos} leídos, ${resumen.creados} nuevos, ${resumen.actualizados} actualizados, ${resumen.errores.length} errores.`,
         });
 
         await batch.commit();
@@ -830,6 +885,9 @@ export const dbService = {
         storedMap.set(u.numero_orden.toUpperCase(), {
           ...existing,
           estatus_enrolamiento: u.estatus,
+          ...(u.ciclo ? { ciclo: u.ciclo } : {}),
+          ...(u.consumo ? { consumo: u.consumo } : {}),
+          ...(u.entrega_chip ? { entrega_chip: u.entrega_chip } : {}),
           fecha_actualizacion: nowISO,
         });
       }

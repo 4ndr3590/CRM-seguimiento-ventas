@@ -31,7 +31,6 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
   const [motivo, setMotivo] = useState<MotivoGestion>('Activa y en uso');
   const [tareaRealizada, setTareaRealizada] = useState<TareaRealizada>('Mensaje de bienvenida');
   const [ventaCerrada, setVentaCerrada] = useState<VentaCerrada>('No');
-  const [numeroManual, setNumeroManual] = useState<string>('');
   const [observaciones, setObservaciones] = useState<string>('');
 
   useEffect(() => {
@@ -49,9 +48,6 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
       setMotivo(cliente.ultima_gestion.motivo);
       setTareaRealizada(cliente.ultima_gestion.tarea_realizada);
       setVentaCerrada(cliente.ultima_gestion.venta_cerrada);
-      if (cliente.ultima_gestion.numero_manual !== undefined && cliente.ultima_gestion.numero_manual !== null) {
-        setNumeroManual(String(cliente.ultima_gestion.numero_manual));
-      }
     }
   }, [cliente]);
 
@@ -73,15 +69,6 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
       return;
     }
 
-    let numVal: number | null = null;
-    if (numeroManual.trim() !== '') {
-      numVal = parseInt(numeroManual, 10);
-      if (isNaN(numVal) || numVal < 1 || numVal > 30) {
-        setErrorMsg('El número manual debe ser un valor entero entre 1 y 30.');
-        return;
-      }
-    }
-
     setGuardando(true);
     try {
       const responsable = user?.nombre || user?.email || 'Analista';
@@ -96,7 +83,6 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
           motivo,
           tarea_realizada: tareaRealizada,
           venta_cerrada: ventaCerrada,
-          numero_manual: numVal,
           observaciones: obsTrim,
           usuario_responsable: responsable,
         },
@@ -327,22 +313,6 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
                   </option>
                 ))}
               </select>
-            </div>
-
-            {/* Número Manual del 1 al 30 */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Número de Seguimiento (1 al 30)
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={numeroManual}
-                onChange={(e) => setNumeroManual(e.target.value)}
-                placeholder="Ingresa un número (1 al 30)"
-                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-slate-500 font-mono"
-              />
             </div>
           </div>
 

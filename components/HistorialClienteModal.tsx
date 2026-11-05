@@ -110,33 +110,33 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <span>1. Información General del Cliente</span>
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-2 text-xs">
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-0.5">Número de Orden</span>
-                <span className="font-bold text-white text-sm">{cliente.numero_orden}</span>
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Número de Orden</span>
+                <span className="font-bold text-white text-xs">{cliente.numero_orden}</span>
               </div>
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-0.5">Fecha Venta</span>
-                <span className="font-semibold text-slate-200">{cliente.fecha_venta}</span>
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Fecha Venta</span>
+                <span className="font-semibold text-slate-200 text-xs">{cliente.fecha_venta}</span>
               </div>
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-0.5">DN Venta</span>
-                <span className="font-mono text-slate-200">{cliente.dn_venta || '-'}</span>
+                <span className="text-slate-400 block mb-0.5 text-[10px]">DN Venta</span>
+                <span className="font-mono text-slate-200 text-xs">{cliente.dn_venta || '-'}</span>
               </div>
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-0.5">DN Nuevo</span>
-                <span className="font-mono text-slate-200">{cliente.dn_nuevo || '-'}</span>
+                <span className="text-slate-400 block mb-0.5 text-[10px]">DN Nuevo</span>
+                <span className="font-mono text-slate-200 text-xs">{cliente.dn_nuevo || '-'}</span>
               </div>
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-0.5">Tipo de Venta</span>
-                <span className="inline-block px-2 py-0.5 rounded font-medium bg-blue-900/40 text-blue-300 border border-blue-700/50">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Tipo Venta</span>
+                <span className="inline-block px-1.5 py-0.5 rounded font-medium text-[11px] bg-blue-900/40 text-blue-300 border border-blue-700/50">
                   {cliente.tipo_venta}
                 </span>
               </div>
               <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="text-slate-400 block mb-0.5">Estatus Enrolamiento</span>
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Enrolamiento</span>
                 <span
-                  className={`inline-block px-2 py-0.5 rounded font-medium ${
+                  className={`inline-block px-1.5 py-0.5 rounded font-medium text-[11px] ${
                     cliente.estatus_enrolamiento === 'Enrolado'
                       ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700'
                       : 'bg-rose-950/80 text-rose-300 border border-rose-700'
@@ -144,6 +144,18 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
                 >
                   {cliente.estatus_enrolamiento}
                 </span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Ciclo</span>
+                <span className="font-semibold text-purple-300 text-xs">{cliente.ciclo || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Consumo Base</span>
+                <span className="font-semibold text-cyan-300 text-xs">{cliente.consumo || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Entrega Chip</span>
+                <span className="font-semibold text-amber-300 text-xs">{cliente.entrega_chip || '-'}</span>
               </div>
             </div>
           </div>
@@ -186,12 +198,6 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
                       {ultima.venta_cerrada}
                     </span>
                   </div>
-                  {ultima.numero_manual !== undefined && ultima.numero_manual !== null && (
-                    <div className="bg-slate-900/80 p-2 rounded border border-slate-800">
-                      <span className="text-slate-400 block">N° Seguimiento</span>
-                      <span className="font-semibold text-blue-400 font-mono">#{ultima.numero_manual}</span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -260,11 +266,6 @@ export const HistorialClienteModal: React.FC<HistorialClienteModalProps> = ({
                         <span className="text-slate-400 text-[11px]">por {g.usuario_responsable}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        {g.numero_manual !== undefined && g.numero_manual !== null && (
-                          <span className="text-[11px] px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-mono font-semibold" title="Número manual (1 al 30)">
-                            Seguimiento: #{g.numero_manual}
-                          </span>
-                        )}
                         <span className="text-[11px] px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 font-medium">
                           {g.estado}
                         </span>

@@ -45,7 +45,6 @@ export interface Gestion {
   motivo: MotivoGestion;
   tarea_realizada: TareaRealizada;
   venta_cerrada: VentaCerrada;
-  numero_manual?: number | null; // Número manual del 1 al 30
   observaciones: string; // max 200 chars, mandatory
   usuario_responsable: string;
 }
@@ -57,6 +56,9 @@ export interface Cliente {
   dn_nuevo: string;
   tipo_venta: TipoVenta;
   estatus_enrolamiento: EstatusEnrolamiento;
+  ciclo?: string; // Ciclo de facturación / seguimiento
+  consumo?: Consumo | string; // Consumo base cargado
+  entrega_chip?: EntregaChip | string; // Entrega de chip base cargada
   fecha_carga: string;
   fecha_actualizacion: string;
   ultima_gestion?: Gestion | null; // Desnormalized latest management (RN04, RN12)
