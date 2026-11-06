@@ -179,12 +179,6 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
     }
   };
 
-  const handleCargarEjemplo = () => {
-    setContenidoTexto(PLANTILLA_TXT);
-    setNombreArchivo('Plantilla_Ejemplo.txt');
-    setModoEntrada('pegar');
-  };
-
   if (!permisos.canCargarBases) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400">
@@ -229,14 +223,6 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
           >
             <Download className="w-4 h-4 text-blue-400" />
             <span>Plantilla Texto (.txt)</span>
-          </button>
-
-          <button
-            onClick={handleCargarEjemplo}
-            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 text-xs font-semibold rounded-xl border border-indigo-700 transition"
-          >
-            <Clipboard className="w-4 h-4" />
-            <span>Cargar Texto Demo</span>
           </button>
         </div>
       </div>

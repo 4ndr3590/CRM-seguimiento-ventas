@@ -15,6 +15,13 @@ import {
   Shield,
   UserPlus,
   RefreshCw,
+  Key,
+  Lock,
+  Eye,
+  EyeOff,
+  UserCheck,
+  UserX,
+  X,
 } from 'lucide-react';
 
 interface AdministracionCatalogosProps {
@@ -38,9 +45,17 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [nombreNuevo, setNombreNuevo] = useState('');
   const [emailNuevo, setEmailNuevo] = useState('');
+  const [passwordNuevo, setPasswordNuevo] = useState('');
+  const [mostrarPasswordNuevo, setMostrarPasswordNuevo] = useState(false);
   const [rolNuevo, setRolNuevo] = useState<RolUsuario>('Analista');
   const [creandoUsuario, setCreandoUsuario] = useState(false);
   const [userMensaje, setUserMensaje] = useState<string | null>(null);
+
+  // Edit password modal state
+  const [usuarioAEditarPassword, setUsuarioAEditarPassword] = useState<Usuario | null>(null);
+  const [nuevaPasswordModal, setNuevaPasswordModal] = useState('');
+  const [mostrarModalPass, setMostrarModalPass] = useState(false);
+  const [guardandoPasswordModal, setGuardandoPasswordModal] = useState(false);
 
   const cargarDatos = async () => {
     try {
@@ -105,16 +120,22 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
 
   const handleCrearUsuario = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombreNuevo.trim() || !emailNuevo.trim()) return;
+    if (!nombreNuevo.trim() || !emailNuevo.trim() || !passwordNuevo.trim()) return;
+
+    if (passwordNuevo.trim().length < 6) {
+      alert('La contraseña debe tener un mínimo de 6 caracteres.');
+      return;
+    }
 
     setCreandoUsuario(true);
     setUserMensaje(null);
     try {
       const nuevo: Usuario = {
-        uid: `usr_${Date.now()}`,
+        uid: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         nombre: nombreNuevo.trim(),
         email: emailNuevo.trim(),
         rol: rolNuevo,
+        password: passwordNuevo.trim(),
         activo: true,
         fecha_creacion: new Date().toISOString(),
       };
@@ -123,7 +144,8 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
       setUsuarios((prev) => [nuevo, ...prev]);
       setNombreNuevo('');
       setEmailNuevo('');
-      setUserMensaje(`Usuario ${nuevo.email} registrado con éxito con rol ${nuevo.rol}.`);
+      setPasswordNuevo('');
+      setUserMensaje(`Usuario ${nuevo.email} registrado con éxito con rol ${nuevo.rol} y contraseña asignada.`);
       setTimeout(() => setUserMensaje(null), 4000);
     } catch (err: any) {
       alert(`Error al crear usuario: ${err.message}`);
@@ -142,13 +164,74 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
     }
   };
 
-  if (!permisos.canAdministrarCatalogos) {
+  const handleToggleActivoUsuario = async (u: Usuario) => {
+    if (u.uid === user?.uid) {
+      alert('No puedes desactivar tu propia cuenta administradora activa.');
+      return;
+    }
+
+    try {
+      const updated: Usuario = { ...u, activo: !u.activo };
+      await dbService.guardarUsuario(updated, user?.nombre || 'Administrador');
+      setUsuarios((prev) => prev.map((item) => (item.uid === u.uid ? updated : item)));
+    } catch (err: any) {
+      alert(`Error al actualizar estado del usuario: ${err.message}`);
+    }
+  };
+
+  const handleEliminarUsuario = async (u: Usuario) => {
+    if (u.uid === user?.uid) {
+      alert('No puedes eliminar tu propia cuenta de Administrador.');
+      return;
+    }
+
+    if (!confirm(`¿Estás seguro de eliminar permanentemente al usuario ${u.email}?`)) {
+      return;
+    }
+
+    try {
+      await dbService.eliminarUsuario(u.uid, user?.nombre || 'Administrador');
+      setUsuarios((prev) => prev.filter((item) => item.uid !== u.uid));
+    } catch (err: any) {
+      alert(`Error al eliminar usuario: ${err.message}`);
+    }
+  };
+
+  const handleGuardarNuevaPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usuarioAEditarPassword) return;
+
+    if (nuevaPasswordModal.trim().length < 6) {
+      alert('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+
+    setGuardandoPasswordModal(true);
+    try {
+      const updated: Usuario = {
+        ...usuarioAEditarPassword,
+        password: nuevaPasswordModal.trim(),
+      };
+      await dbService.guardarUsuario(updated, user?.nombre || 'Administrador');
+      setUsuarios((prev) => prev.map((item) => (item.uid === updated.uid ? updated : item)));
+      alert(`Contraseña actualizada con éxito para el usuario ${updated.email}.`);
+      setUsuarioAEditarPassword(null);
+      setNuevaPasswordModal('');
+    } catch (err: any) {
+      alert(`Error al actualizar contraseña: ${err.message}`);
+    } finally {
+      setGuardandoPasswordModal(false);
+    }
+  };
+
+  // Strict check: only Administrator can access this module
+  if (user?.rol !== 'Administrador') {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-400">
         <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
         <h2 className="text-lg font-bold text-white mb-1">Acceso Restringido</h2>
         <p className="text-xs">
-          La Administración de Catálogos y Usuarios está reservada para el perfil <strong>Administrador</strong>.
+          La Administración de Catálogos y Usuarios está reservada exclusivamente para el perfil <strong>Administrador</strong>.
         </p>
       </div>
     );
@@ -177,7 +260,7 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
             Módulo 7: Administración de Catálogos y Usuarios
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Configuración dinámica de catálogos desplegables y administración de accesos por perfil.
+            Configuración dinámica de catálogos desplegables y administración de accesos y contraseñas por perfil.
           </p>
         </div>
 
@@ -205,95 +288,99 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
       </div>
 
       {subTab === 'catalogos' ? (
-        /* Catalogs Editor */
+        /* Catalog Management */
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Catalogs Menu */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-1">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">
-              Catálogos del Sistema:
-            </h3>
-            {nombresCatalogos.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setCatalogoSeleccionado(c.id)}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition flex items-center justify-between ${
-                  catalogoSeleccionado === c.id
-                    ? 'bg-purple-600 text-white shadow-md'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <span>{c.label}</span>
-                <span className="text-[10px] bg-slate-950/60 px-1.5 py-0.5 rounded text-slate-400">
-                  {catalogos ? (catalogos[c.id] || []).length : 0}
-                </span>
-              </button>
-            ))}
+          {/* Select Catalog */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2">
+            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              Seleccionar Catálogo
+            </h2>
+            <div className="space-y-1">
+              {nombresCatalogos.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCatalogoSeleccionado(cat.id)}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition flex items-center justify-between ${
+                    catalogoSeleccionado === cat.id
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-900/40'
+                      : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{cat.label}</span>
+                  <span className="text-[10px] opacity-75">
+                    {catalogos ? (catalogos[cat.id] as string[]).length : 0} valores
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Catalog Values Manager */}
-          <div className="md:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          {/* Edit Selected Catalog */}
+          <div className="md:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div>
                 <h2 className="text-sm font-bold text-white">
-                  Editar Catálogo: <span className="text-purple-400">{nombresCatalogos.find((n) => n.id === catalogoSeleccionado)?.label}</span>
+                  Valores del Catálogo:{' '}
+                  <span className="text-purple-400">
+                    {nombresCatalogos.find((n) => n.id === catalogoSeleccionado)?.label}
+                  </span>
                 </h2>
-                <p className="text-[11px] text-slate-400">
-                  Agrega o remueve opciones que aparecerán en los formularios de registro y filtros.
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Los cambios que realices se reflejarán inmediatamente en todos los formularios del CRM.
                 </p>
               </div>
 
               <button
                 onClick={handleGuardarCatalogos}
                 disabled={guardandoCatalogo}
-                className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-900/40 transition disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-900/30 transition disabled:opacity-50"
               >
-                <Save className="w-3.5 h-3.5" />
-                <span>{guardandoCatalogo ? 'Guardando...' : 'Guardar Cambios'}</span>
+                <Save className="w-4 h-4" />
+                <span>{guardandoCatalogo ? 'Guardando...' : 'Guardar en Base de Datos'}</span>
               </button>
             </div>
 
             {catMensaje && (
-              <div className="bg-emerald-950/50 border border-emerald-800 text-emerald-300 px-4 py-2 rounded-xl text-xs flex items-center gap-2">
+              <div className="bg-emerald-950/50 border border-emerald-800 text-emerald-300 p-3 rounded-xl text-xs flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                 <span>{catMensaje}</span>
               </div>
             )}
 
-            {/* Add new option input */}
+            {/* Add New Value */}
             <div className="flex gap-2">
               <input
                 type="text"
                 value={nuevoValor}
                 onChange={(e) => setNuevoValor(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAgregarValor())}
-                placeholder="Escribe el nombre de la nueva opción..."
-                className="flex-1 bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none placeholder-slate-500"
+                onKeyDown={(e) => e.key === 'Enter' && handleAgregarValor()}
+                placeholder="Escribe un nuevo valor para este catálogo..."
+                className="flex-1 bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
               />
               <button
                 onClick={handleAgregarValor}
-                disabled={!nuevoValor.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-purple-300 font-semibold rounded-xl text-xs border border-purple-800/40 transition disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
                 <span>Agregar</span>
               </button>
             </div>
 
-            {/* List of current options */}
-            <div className="space-y-2 max-h-96 overflow-y-auto pt-2">
+            {/* Value List */}
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
               {catalogos &&
-                ((catalogos[catalogoSeleccionado] as string[]) || []).map((valor, idx) => (
+                (catalogos[catalogoSeleccionado] as string[]).map((valor, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs"
+                    className="flex items-center justify-between p-2.5 bg-slate-800/60 rounded-xl border border-slate-700/60 text-xs group hover:border-slate-600 transition"
                   >
-                    <span className="font-medium text-slate-200">{valor}</span>
+                    <span className="text-slate-200 font-medium">{valor}</span>
                     <button
                       onClick={() => handleEliminarValor(idx)}
-                      className="text-slate-500 hover:text-rose-400 p-1 rounded transition"
-                      title="Eliminar opción"
+                      className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-700 transition"
+                      title="Eliminar este valor del catálogo"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}
@@ -303,7 +390,7 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
       ) : (
         /* User Management */
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Create User Form */}
+          {/* Create User Form with Password Field */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
             <h2 className="text-sm font-bold text-white flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-purple-400" />
@@ -335,6 +422,31 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
                 />
               </div>
 
+              {/* Password Assignment Field */}
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">
+                  Contraseña de Acceso * (mínimo 6 caracteres)
+                </label>
+                <div className="relative">
+                  <input
+                    type={mostrarPasswordNuevo ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={passwordNuevo}
+                    onChange={(e) => setPasswordNuevo(e.target.value)}
+                    placeholder="Contraseña inicial"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 pr-9 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarPasswordNuevo(!mostrarPasswordNuevo)}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-white"
+                  >
+                    {mostrarPasswordNuevo ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-slate-400 font-medium mb-1">Perfil / Rol *</label>
                 <select
@@ -350,11 +462,11 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
 
               <button
                 type="submit"
-                disabled={creandoUsuario || !nombreNuevo.trim() || !emailNuevo.trim()}
+                disabled={creandoUsuario || !nombreNuevo.trim() || !emailNuevo.trim() || passwordNuevo.trim().length < 6}
                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-purple-900/40 transition disabled:opacity-50 mt-4"
               >
                 <UserPlus className="w-4 h-4" />
-                <span>{creandoUsuario ? 'Registrando...' : 'Registrar Usuario'}</span>
+                <span>{creandoUsuario ? 'Registrando en Base de Datos...' : 'Registrar Usuario'}</span>
               </button>
             </form>
 
@@ -369,11 +481,11 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
           {/* User List Table */}
           <div className="md:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
             <h2 className="text-sm font-bold text-white flex items-center justify-between">
-              <span>Usuarios del Sistema ({usuarios.length})</span>
-              <span className="text-xs text-slate-400 font-normal">Roles y permisos de seguridad</span>
+              <span>Usuarios Registrados en el Sistema ({usuarios.length})</span>
+              <span className="text-xs text-slate-400 font-normal">Sincronizados en Cloud Firestore</span>
             </h2>
 
-            <div className="divide-y divide-slate-800">
+            <div className="divide-y divide-slate-800 max-h-[500px] overflow-y-auto pr-1">
               {usuarios.map((u) => (
                 <div key={u.uid} className="py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
                   <div>
@@ -381,30 +493,126 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
                     <span className="text-slate-400 font-mono text-[11px]">{u.email}</span>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    {/* Role Dropdown */}
                     <select
                       value={u.rol}
                       onChange={(e) => handleCambiarRolUsuario(u, e.target.value as RolUsuario)}
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                     >
                       <option value="Administrador">Administrador</option>
                       <option value="Analista">Analista</option>
                       <option value="Consulta">Consulta</option>
                     </select>
 
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+                    {/* Change Password Button */}
+                    <button
+                      onClick={() => {
+                        setUsuarioAEditarPassword(u);
+                        setNuevaPasswordModal('');
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition"
+                      title="Cambiar contraseña de este usuario"
+                    >
+                      <Key className="w-3 h-3 text-amber-400" />
+                      <span>Clave</span>
+                    </button>
+
+                    {/* Active / Inactive Toggle */}
+                    <button
+                      onClick={() => handleToggleActivoUsuario(u)}
+                      className={`text-[10px] px-2 py-1 rounded font-medium border transition ${
                         u.activo
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                          : 'bg-rose-950 text-rose-400 border border-rose-800'
+                          ? 'bg-emerald-950 text-emerald-400 border-emerald-800 hover:bg-rose-950 hover:text-rose-400 hover:border-rose-800'
+                          : 'bg-rose-950 text-rose-400 border-rose-800 hover:bg-emerald-950 hover:text-emerald-400 hover:border-emerald-800'
                       }`}
+                      title={u.activo ? 'Clic para desactivar acceso' : 'Clic para activar acceso'}
                     >
                       {u.activo ? 'Activo' : 'Inactivo'}
-                    </span>
+                    </button>
+
+                    {/* Delete User */}
+                    {u.uid !== user?.uid && (
+                      <button
+                        onClick={() => handleEliminarUsuario(u)}
+                        className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-800 transition"
+                        title="Eliminar usuario"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Cambiar Contraseña de Usuario */}
+      {usuarioAEditarPassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Key className="w-4 h-4 text-amber-400" />
+                <span>Asignar Nueva Contraseña</span>
+              </h3>
+              <button
+                onClick={() => setUsuarioAEditarPassword(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-300">
+              Usuario: <strong className="text-white">{usuarioAEditarPassword.nombre}</strong> (
+              {usuarioAEditarPassword.email})
+            </div>
+
+            <form onSubmit={handleGuardarNuevaPassword} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">
+                  Nueva Contraseña * (mínimo 6 caracteres)
+                </label>
+                <div className="relative">
+                  <input
+                    type={mostrarModalPass ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={nuevaPasswordModal}
+                    onChange={(e) => setNuevaPasswordModal(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 pr-9 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarModalPass(!mostrarModalPass)}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-white"
+                  >
+                    {mostrarModalPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUsuarioAEditarPassword(null)}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoPasswordModal || nuevaPasswordModal.trim().length < 6}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50"
+                >
+                  {guardandoPasswordModal ? 'Guardando...' : 'Actualizar Contraseña'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

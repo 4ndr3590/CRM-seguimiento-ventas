@@ -36,4 +36,4 @@ if (typeof window !== 'undefined' || isFirebaseConfigured()) {
   }
 }
 
-export { app, db, auth };
+export { app, db, auth, firebaseConfig };

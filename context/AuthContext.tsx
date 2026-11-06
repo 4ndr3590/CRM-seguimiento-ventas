@@ -3,15 +3,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Usuario, RolUsuario } from '@/types/crm';
 import { auth, isFirebaseConfigured } from '@/lib/firebase';
-import { onAuthStateChanged, signOut as fbSignOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
 import { dbService } from '@/lib/dbService';
+
+const SESSION_STORAGE_KEY = 'crm_active_session';
 
 interface AuthContextType {
   user: Usuario | null;
   loading: boolean;
-  cambiarUsuarioActivo: (usuario: Usuario) => void;
-  cambiarRolRapido: (rol: RolUsuario) => void;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  refrescarUsuarios: () => Promise<Usuario[]>;
   usuariosDisponibles: Usuario[];
   permisos: {
     canCargarBases: boolean;
@@ -30,80 +32,184 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load registered users from dbService
+  // Load all users from dbService
   const refrescarUsuarios = async () => {
     try {
       const list = await dbService.getUsuarios();
       setUsuariosDisponibles(list);
-      // Default to the first admin if no user selected
-      if (!user && list.length > 0) {
-        const admin = list.find((u) => u.rol === 'Administrador') || list[0];
-        setUser(admin);
-      }
+      return list;
     } catch (e) {
       console.warn('Error loading users:', e);
-    } finally {
-      setLoading(false);
+      return [];
     }
   };
 
   useEffect(() => {
-    refrescarUsuarios();
+    let isMounted = true;
 
-    // If Firebase Auth is configured, listen to auth state
-    if (isFirebaseConfigured() && auth) {
-      const unsub = onAuthStateChanged(auth, async (fbUser) => {
-        if (fbUser) {
-          const list = await dbService.getUsuarios();
-          const match = list.find((u) => u.email === fbUser.email || u.uid === fbUser.uid);
-          if (match) {
-            setUser(match);
-          } else {
-            // Create session user
-            const nuevo: Usuario = {
-              uid: fbUser.uid,
-              email: fbUser.email || 'usuario@crm.com',
-              nombre: fbUser.displayName || fbUser.email?.split('@')[0] || 'Usuario Firebase',
-              rol: 'Analista', // default fallback
-              activo: true,
-              fecha_creacion: new Date().toISOString(),
-            };
-            setUser(nuevo);
+    const initAuth = async () => {
+      try {
+        const list = await refrescarUsuarios();
+
+        // 1. Check local session storage
+        let initialUser: Usuario | null = null;
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as Usuario;
+              // Validate user is still in system and active
+              const match = list.find(
+                (u) => u.email.toLowerCase() === parsed.email.toLowerCase() || u.uid === parsed.uid
+              );
+              if (match && match.activo) {
+                initialUser = match;
+              }
+            } catch {
+              localStorage.removeItem(SESSION_STORAGE_KEY);
+            }
           }
         }
-      });
-      return () => unsub();
-    }
+
+        // 2. If Firebase Auth is configured, check auth state
+        if (isFirebaseConfigured() && auth) {
+          onAuthStateChanged(auth, async (fbUser) => {
+            if (!isMounted) return;
+            if (fbUser && fbUser.email) {
+              const updatedList = await dbService.getUsuarios();
+              const match = updatedList.find(
+                (u) =>
+                  u.email.toLowerCase() === fbUser.email!.toLowerCase() || u.uid === fbUser.uid
+              );
+              if (match && match.activo) {
+                setUser(match);
+                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(match));
+              }
+            }
+          });
+        }
+
+        if (initialUser && isMounted) {
+          setUser(initialUser);
+        }
+      } catch (err) {
+        console.error('Error during auth initialization:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const cambiarUsuarioActivo = (nuevo: Usuario) => {
-    setUser(nuevo);
-  };
+  const login = async (
+    email: string,
+    pass: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = pass.trim();
 
-  const cambiarRolRapido = (rol: RolUsuario) => {
-    if (!user) return;
-    const match = usuariosDisponibles.find((u) => u.rol === rol);
-    if (match) {
-      setUser(match);
-    } else {
-      setUser({
-        ...user,
-        rol,
-        nombre: `${user.nombre.split('(')[0].trim()} (${rol})`,
+    if (!cleanEmail || !cleanPass) {
+      return { success: false, error: 'Por favor ingresa correo y contraseña.' };
+    }
+
+    try {
+      const list = await dbService.getUsuarios();
+
+      // Find user in database records
+      const found = list.find((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (!found) {
+        return {
+          success: false,
+          error: 'No se encontró ningún usuario registrado con ese correo electrónico.',
+        };
+      }
+
+      if (!found.activo) {
+        return {
+          success: false,
+          error: 'Tu usuario se encuentra inactivo. Por favor contacta al Administrador.',
+        };
+      }
+
+      // Check with Firebase Auth first if configured
+      let firebaseAuthSuccess = false;
+      if (isFirebaseConfigured() && auth) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+          if (cred.user) {
+            firebaseAuthSuccess = true;
+          }
+        } catch (fbErr: any) {
+          // If Firebase Auth fails, we still check the database record password
+          console.warn('Firebase Auth sign-in attempt notice:', fbErr.code || fbErr.message);
+        }
+      }
+
+      // Check database password match
+      if (!firebaseAuthSuccess) {
+        if (!found.password || found.password !== cleanPass) {
+          return {
+            success: false,
+            error: 'Contraseña incorrecta. Por favor verifica tus credenciales.',
+          };
+        }
+      }
+
+      // User authenticated successfully
+      setUser(found);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(found));
+      }
+
+      // Record audit event
+      await dbService.registrarAuditoria({
+        usuario: found.nombre || found.email,
+        modulo: 'Autenticación',
+        accion: 'Inicio de Sesión',
+        detalle: `Inicio de sesión exitoso con perfil ${found.rol}.`,
       });
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Login error:', err);
+      return {
+        success: false,
+        error: `Error al iniciar sesión: ${err.message || 'Error desconocido'}`,
+      };
     }
   };
 
   const logout = async () => {
-    if (isFirebaseConfigured() && auth) {
-      await fbSignOut(auth);
+    try {
+      if (user) {
+        await dbService.registrarAuditoria({
+          usuario: user.nombre || user.email,
+          modulo: 'Autenticación',
+          accion: 'Cierre de Sesión',
+          detalle: `Sesión finalizada por el usuario.`,
+        });
+      }
+
+      if (isFirebaseConfigured() && auth) {
+        await fbSignOut(auth);
+      }
+    } catch (err) {
+      console.warn('Logout warning:', err);
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+      setUser(null);
     }
-    // Switch to Consulta as fallback guest
-    const consulta = usuariosDisponibles.find((u) => u.rol === 'Consulta');
-    if (consulta) setUser(consulta);
   };
 
-  const rol = user?.rol || 'Consulta';
+  const rol: RolUsuario = user?.rol || 'Consulta';
 
   const permisos = {
     // Administrador: Cargar bases, actualizar bases, crear usuarios, modificar catálogos, consultar dashboard, exportar información.
@@ -122,9 +228,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         loading,
-        cambiarUsuarioActivo,
-        cambiarRolRapido,
+        login,
         logout,
+        refrescarUsuarios,
         usuariosDisponibles,
         permisos,
       }}

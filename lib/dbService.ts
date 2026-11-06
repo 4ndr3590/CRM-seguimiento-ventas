@@ -1,3 +1,5 @@
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -12,7 +14,7 @@ import {
   writeBatch,
   onSnapshot,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { db, isFirebaseConfigured, firebaseConfig } from './firebase';
 import {
   Cliente,
   Gestion,
@@ -24,6 +26,7 @@ import {
   EstatusEnrolamiento,
 } from '@/types/crm';
 import { CATALOGOS_INICIALES } from './defaultCatalogs';
+import { USUARIOS_INICIALES } from './defaultUsers';
 
 // ----------------------------------------------------
 // LOCAL STORAGE KEYS (Fallback / Mock Mode)
@@ -403,13 +406,20 @@ function setLocal<T>(key: string, value: T): void {
 
 function ensureMockStorageInitialized() {
   if (typeof window === 'undefined') return;
+  if (!localStorage.getItem(STORAGE_KEY_CATALOGOS)) {
+    setLocal(STORAGE_KEY_CATALOGOS, CATALOGOS_INICIALES);
+  }
+  if (!localStorage.getItem(STORAGE_KEY_USUARIOS)) {
+    setLocal(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+  }
   if (!localStorage.getItem(STORAGE_KEY_CLIENTES)) {
-    const seed = generateSeedData();
-    setLocal(STORAGE_KEY_CLIENTES, seed.clientes);
-    setLocal(STORAGE_KEY_GESTIONES, seed.gestiones);
-    setLocal(STORAGE_KEY_CATALOGOS, seed.catalogos);
-    setLocal(STORAGE_KEY_USUARIOS, seed.usuarios);
-    setLocal(STORAGE_KEY_AUDITORIA, seed.auditoria);
+    setLocal(STORAGE_KEY_CLIENTES, []);
+  }
+  if (!localStorage.getItem(STORAGE_KEY_GESTIONES)) {
+    setLocal(STORAGE_KEY_GESTIONES, []);
+  }
+  if (!localStorage.getItem(STORAGE_KEY_AUDITORIA)) {
+    setLocal(STORAGE_KEY_AUDITORIA, []);
   }
 }
 
@@ -443,6 +453,87 @@ export const dbService = {
 
     const handler = () => {
       callback(getLocal<Cliente[]>(STORAGE_KEY_CLIENTES, []));
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('crm_local_change', handler);
+      window.addEventListener('storage', handler);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('crm_local_change', handler);
+        window.removeEventListener('storage', handler);
+      }
+    };
+  },
+
+  subscribeGestiones(callback: (gestiones: Gestion[]) => void): () => void {
+    const firestore = db;
+    if (isFirebaseConfigured() && firestore) {
+      const q = query(collection(firestore, 'gestiones'), orderBy('fecha_hora_gestion', 'desc'));
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const list: Gestion[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push(docSnap.data() as Gestion);
+          });
+          callback(list);
+        },
+        (error) => {
+          console.warn('Firestore onSnapshot gestiones error:', error);
+          callback(getLocal<Gestion[]>(STORAGE_KEY_GESTIONES, []));
+        }
+      );
+      return unsubscribe;
+    }
+
+    ensureMockStorageInitialized();
+    callback(getLocal<Gestion[]>(STORAGE_KEY_GESTIONES, []));
+
+    const handler = () => {
+      callback(getLocal<Gestion[]>(STORAGE_KEY_GESTIONES, []));
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('crm_local_change', handler);
+      window.addEventListener('storage', handler);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('crm_local_change', handler);
+        window.removeEventListener('storage', handler);
+      }
+    };
+  },
+
+  subscribeCatalogos(callback: (catalogos: Catalogos) => void): () => void {
+    const firestore = db;
+    if (isFirebaseConfigured() && firestore) {
+      const unsubscribe = onSnapshot(
+        doc(firestore, 'catalogos', 'general'),
+        (snapshot) => {
+          if (snapshot.exists()) {
+            callback(snapshot.data() as Catalogos);
+          } else {
+            callback(CATALOGOS_INICIALES);
+          }
+        },
+        (error) => {
+          console.warn('Firestore onSnapshot catalogos error:', error);
+          callback(getLocal<Catalogos>(STORAGE_KEY_CATALOGOS, CATALOGOS_INICIALES));
+        }
+      );
+      return unsubscribe;
+    }
+
+    ensureMockStorageInitialized();
+    callback(getLocal<Catalogos>(STORAGE_KEY_CATALOGOS, CATALOGOS_INICIALES));
+
+    const handler = () => {
+      callback(getLocal<Catalogos>(STORAGE_KEY_CATALOGOS, CATALOGOS_INICIALES));
     };
 
     if (typeof window !== 'undefined') {
@@ -540,14 +631,19 @@ export const dbService = {
 
     if (isFirebaseConfigured() && firestore) {
       try {
-        const batch = writeBatch(firestore);
-        numerosOrden.forEach((num) => {
-          batch.delete(doc(firestore, 'clientes', num));
-        });
+        const chunkSize = 400;
+        for (let i = 0; i < numerosOrden.length; i += chunkSize) {
+          const batch = writeBatch(firestore);
+          const chunk = numerosOrden.slice(i, i + chunkSize);
+          chunk.forEach((num) => {
+            batch.delete(doc(firestore, 'clientes', num));
+          });
+          await batch.commit();
+        }
 
         const auditId = `aud_${Date.now()}`;
         const auditRef = doc(firestore, 'bitacora_auditoria', auditId);
-        batch.set(auditRef, {
+        await setDoc(auditRef, {
           id: auditId,
           fecha_hora: nowISO,
           usuario: usuarioResponsable,
@@ -556,7 +652,6 @@ export const dbService = {
           detalle: `Eliminación masiva de ${count} clientes: ${numerosOrden.slice(0, 5).join(', ')}${count > 5 ? '...' : ''} por el Administrador.`,
         });
 
-        await batch.commit();
         return count;
       } catch (e) {
         console.warn('Firestore error in eliminarClientesMasivo, falling back to local:', e);
@@ -866,35 +961,49 @@ export const dbService = {
     const firestore = db;
     if (isFirebaseConfigured() && firestore) {
       try {
-        const batch = writeBatch(firestore);
-        operacionesNuevas.forEach((c) => {
-          const ref = doc(firestore, 'clientes', c.numero_orden);
-          batch.set(ref, c);
-        });
-        operacionesActualizar.forEach((u) => {
-          const ref = doc(firestore, 'clientes', u.numero_orden);
-          batch.update(ref, {
-            estatus_enrolamiento: u.estatus,
-            ...(u.ciclo ? { ciclo: u.ciclo } : {}),
-            ...(u.consumo ? { consumo: u.consumo } : {}),
-            ...(u.entrega_chip ? { entrega_chip: u.entrega_chip } : {}),
-            ...(u.entregado ? { entregado: u.entregado } : {}),
-            fecha_actualizacion: nowISO,
-          });
-        });
+        const chunkSize = 400;
 
+        // Escribir registros nuevos en lotes seguros (máximo 400 por batch en Firestore)
+        for (let i = 0; i < operacionesNuevas.length; i += chunkSize) {
+          const batch = writeBatch(firestore);
+          const chunk = operacionesNuevas.slice(i, i + chunkSize);
+          chunk.forEach((c) => {
+            const ref = doc(firestore, 'clientes', c.numero_orden);
+            batch.set(ref, c);
+          });
+          await batch.commit();
+        }
+
+        // Actualizar registros existentes en lotes seguros
+        for (let i = 0; i < operacionesActualizar.length; i += chunkSize) {
+          const batch = writeBatch(firestore);
+          const chunk = operacionesActualizar.slice(i, i + chunkSize);
+          chunk.forEach((u) => {
+            const ref = doc(firestore, 'clientes', u.numero_orden);
+            batch.update(ref, {
+              estatus_enrolamiento: u.estatus,
+              ...(u.ciclo ? { ciclo: u.ciclo } : {}),
+              ...(u.consumo ? { consumo: u.consumo } : {}),
+              ...(u.entrega_chip ? { entrega_chip: u.entrega_chip } : {}),
+              ...(u.entregado ? { entregado: u.entregado } : {}),
+              fecha_actualizacion: nowISO,
+            });
+          });
+          await batch.commit();
+        }
+
+        // Registrar evento de auditoría en Firestore
         const auditId = `aud_${Date.now()}`;
         const auditRef = doc(firestore, 'bitacora_auditoria', auditId);
-        batch.set(auditRef, {
+        await setDoc(auditRef, {
           id: auditId,
           fecha_hora: nowISO,
           usuario: usuarioResponsable,
           modulo: 'Carga de Bases',
           accion: 'Procesamiento de Archivo',
-          detalle: `Carga de base finalizada: ${resumen.totalLeidos} leídos, ${resumen.creados} nuevos, ${resumen.actualizados} actualizados, ${resumen.errores.length} errores.`,
+          detalle: `Carga de base finalizada: ${resumen.totalLeidos} leídos, ${resumen.creados} nuevos, ${resumen.actualizados} actualizados, ${resumen.errores.length} errores sincronizados en Firestore.`,
         });
 
-        await batch.commit();
         return resumen;
       } catch (err) {
         console.warn('Error in Firestore batch carga base, falling back to local:', err);
@@ -999,17 +1108,41 @@ export const dbService = {
         const list: Usuario[] = [];
         snap.forEach((d) => list.push(d.data() as Usuario));
         if (list.length > 0) return list;
+
+        // Si la colección de usuarios está vacía en Firestore, registrar usuarios por defecto
+        const batch = writeBatch(firestore);
+        USUARIOS_INICIALES.forEach((u) => {
+          const ref = doc(firestore, 'usuarios', u.uid);
+          batch.set(ref, u);
+        });
+        await batch.commit();
+        return USUARIOS_INICIALES;
       } catch (e) {
         console.warn('Firestore getUsuarios error:', e);
       }
     }
     ensureMockStorageInitialized();
-    return getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, []);
+    return getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
   },
 
   async guardarUsuario(usuario: Usuario, adminResponsable: string): Promise<void> {
     const nowISO = new Date().toISOString();
     const firestore = db;
+
+    // Si Firebase Auth está activo y se proporcionó contraseña, crear usuario en Firebase Authentication
+    if (isFirebaseConfigured() && usuario.password) {
+      try {
+        const secApp = initializeApp(firebaseConfig, `user_app_${Date.now()}`);
+        const secAuth = getAuth(secApp);
+        const cred = await createUserWithEmailAndPassword(secAuth, usuario.email, usuario.password);
+        usuario.uid = cred.user.uid;
+        await deleteApp(secApp);
+      } catch (authErr: any) {
+        // Puede que ya exista en Auth o sea actualización de perfil
+        console.warn('Firebase Auth user creation notice:', authErr.message);
+      }
+    }
+
     if (isFirebaseConfigured() && firestore) {
       try {
         await setDoc(doc(firestore, 'usuarios', usuario.uid), usuario);
@@ -1020,16 +1153,17 @@ export const dbService = {
           usuario: adminResponsable,
           modulo: 'Administración de Usuarios',
           accion: 'Guardar Usuario',
-          detalle: `Usuario ${usuario.email} (${usuario.rol}) creado o actualizado.`,
+          detalle: `Usuario ${usuario.email} (${usuario.rol}) registrado o actualizado en Firestore.`,
         });
         return;
       } catch (e) {
         console.warn('Firestore guardarUsuario error:', e);
       }
     }
+
     ensureMockStorageInitialized();
-    const list = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, []);
-    const idx = list.findIndex((u) => u.uid === usuario.uid);
+    const list = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+    const idx = list.findIndex((u) => u.uid === usuario.uid || u.email.toLowerCase() === usuario.email.toLowerCase());
     if (idx !== -1) {
       list[idx] = usuario;
     } else {
@@ -1044,10 +1178,35 @@ export const dbService = {
       usuario: adminResponsable,
       modulo: 'Administración de Usuarios',
       accion: 'Guardar Usuario',
-      detalle: `Usuario ${usuario.email} (${usuario.rol}) creado o actualizado.`,
+      detalle: `Usuario ${usuario.email} (${usuario.rol}) registrado o actualizado.`,
     });
     setLocal(STORAGE_KEY_AUDITORIA, auditoria);
     emitLocalDbChange('usuario_guardado');
+  },
+
+  async eliminarUsuario(uid: string, adminResponsable: string): Promise<void> {
+    const firestore = db;
+    const nowISO = new Date().toISOString();
+    if (isFirebaseConfigured() && firestore) {
+      try {
+        await deleteDoc(doc(firestore, 'usuarios', uid));
+        const auditId = `aud_${Date.now()}`;
+        await setDoc(doc(firestore, 'bitacora_auditoria', auditId), {
+          id: auditId,
+          fecha_hora: nowISO,
+          usuario: adminResponsable,
+          modulo: 'Administración de Usuarios',
+          accion: 'Eliminar Usuario',
+          detalle: `Usuario con identificador ${uid} eliminado por el Administrador.`,
+        });
+        return;
+      } catch (e) {
+        console.warn('Firestore eliminarUsuario error:', e);
+      }
+    }
+    const list = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+    setLocal(STORAGE_KEY_USUARIOS, list.filter((u) => u.uid !== uid));
+    emitLocalDbChange('usuario_eliminado');
   },
 
   async getBitacora(): Promise<AuditoriaEvento[]> {
@@ -1092,52 +1251,5 @@ export const dbService = {
     list.unshift(fullEvento);
     setLocal(STORAGE_KEY_AUDITORIA, list);
     emitLocalDbChange('auditoria');
-  },
-
-  async inicializarCatalogosYDatosPrueba(forzar: boolean = false): Promise<{ message: string; count: number }> {
-    const seed = generateSeedData();
-    const firestore = db;
-
-    if (isFirebaseConfigured() && firestore) {
-      try {
-        const catSnap = await getDoc(doc(firestore, 'catalogos', 'general'));
-        if (!catSnap.exists() || forzar) {
-          const batch = writeBatch(firestore);
-          batch.set(doc(firestore, 'catalogos', 'general'), seed.catalogos);
-
-          seed.usuarios.forEach((u) => {
-            batch.set(doc(firestore, 'usuarios', u.uid), u);
-          });
-
-          seed.clientes.forEach((c) => {
-            batch.set(doc(firestore, 'clientes', c.numero_orden), c);
-          });
-
-          seed.gestiones.forEach((g) => {
-            batch.set(doc(firestore, 'gestiones', g.id_gestion), g);
-          });
-
-          seed.auditoria.forEach((a) => {
-            batch.set(doc(firestore, 'bitacora_auditoria', a.id), a);
-          });
-
-          await batch.commit();
-          return { message: 'Base de datos Firestore poblada con éxito.', count: seed.clientes.length };
-        } else {
-          return { message: 'Firestore ya contiene datos configurados.', count: seed.clientes.length };
-        }
-      } catch (e) {
-        console.error('Error seeding Firestore:', e);
-        throw e;
-      }
-    }
-
-    setLocal(STORAGE_KEY_CLIENTES, seed.clientes);
-    setLocal(STORAGE_KEY_GESTIONES, seed.gestiones);
-    setLocal(STORAGE_KEY_CATALOGOS, seed.catalogos);
-    setLocal(STORAGE_KEY_USUARIOS, seed.usuarios);
-    setLocal(STORAGE_KEY_AUDITORIA, seed.auditoria);
-    emitLocalDbChange('seeder_completed');
-    return { message: 'Datos de prueba y catálogos inicializados en memoria local.', count: seed.clientes.length };
   },
 };

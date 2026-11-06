@@ -30,6 +30,7 @@ export interface Usuario {
   email: string;
   nombre: string;
   rol: RolUsuario;
+  password?: string; // Contraseña para acceso al sistema
   activo: boolean;
   fecha_creacion: string;
 }
