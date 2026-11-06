@@ -2,17 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Validar que la solicitud provenga de un usuario autenticado en Firebase
-    function isAuthenticated() {
-      return request.auth != null;
+    // ========================================================
+    // COLECCIÓN: usuarios (Gestión y Sincronización de Usuarios)
+    // ========================================================
+    match /usuarios/{userId} {
+      allow read, write: if true;
     }
 
     // ========================================================
     // COLECCIÓN: clientes (Tabla Principal: CLIENTES)
     // ========================================================
-    // Permite lectura y escritura a usuarios autenticados
     match /clientes/{numero_orden} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // ========================================================
@@ -20,7 +21,7 @@ service cloud.firestore {
     // ========================================================
     // RN02, RN03 & RN08: Inmutabilidad estricta. Jamás editar ni eliminar.
     match /gestiones/{id_gestion} {
-      allow read, create: if isAuthenticated();
+      allow read, create: if true;
       allow update, delete: if false;
     }
 
@@ -29,7 +30,7 @@ service cloud.firestore {
     // ========================================================
     // Solo lectura y registro nuevo; jamás edición ni eliminación.
     match /bitacora_auditoria/{id_auditoria} {
-      allow read, create: if isAuthenticated();
+      allow read, create: if true;
       allow update, delete: if false;
     }
 
@@ -37,14 +38,14 @@ service cloud.firestore {
     // COLECCIÓN: catalogos (Administración de Catálogos Dinámicos)
     // ========================================================
     match /catalogos/{catalogoId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // ========================================================
-    // COLECCIÓN: usuarios (Gestión y Sincronización de Usuarios)
+    // COLECCIÓN: configuracion (Ajustes del Sistema)
     // ========================================================
-    match /usuarios/{userId} {
-      allow read, write: if isAuthenticated();
+    match /configuracion/{docId} {
+      allow read, write: if true;
     }
   }
 }

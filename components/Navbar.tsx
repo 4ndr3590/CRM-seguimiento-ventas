@@ -1,8 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { isFirebaseConfigured } from '@/lib/firebase';
 import {
   Shield,
   Database,
@@ -15,6 +14,8 @@ import {
   History,
   LogOut,
   User,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -24,8 +25,8 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ tabActiva, setTabActiva }) => {
-  const { user, logout, permisos } = useAuth();
-  const firebaseConectado = isFirebaseConfigured();
+  const { user, logout, permisos, conexionFirestore, errorConexion } = useAuth();
+  const [mostrarAlertaError, setMostrarAlertaError] = useState(false);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard Ejecutivo', icon: Activity, permiso: true },
@@ -47,22 +48,35 @@ export const Navbar: React.FC<NavbarProps> = ({ tabActiva, setTabActiva }) => {
             CRM SEGUIMIENTO DE VENTAS
           </div>
 
-          {/* Database Connection Status */}
-          <div
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium ${
-              firebaseConectado
+          {/* Database Connection Status - Requisito 5 */}
+          <button
+            onClick={() => {
+              if (conexionFirestore === 'error') {
+                setMostrarAlertaError(!mostrarAlertaError);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${
+              conexionFirestore === 'conectado'
                 ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
+                : conexionFirestore === 'error'
+                ? 'bg-rose-950/90 text-rose-300 border border-rose-800 animate-pulse hover:bg-rose-900 cursor-pointer'
                 : 'bg-amber-950/80 text-amber-300 border border-amber-800'
             }`}
             title={
-              firebaseConectado
+              conexionFirestore === 'conectado'
                 ? 'Sincronizado en tiempo real con Firebase Cloud Firestore'
-                : 'Modo Local Reactivo'
+                : 'Clic para ver detalles de diagnóstico de conexión'
             }
           >
             <Database className="w-3.5 h-3.5" />
-            <span>{firebaseConectado ? 'Firestore en Tiempo Real' : 'Base Local'}</span>
-          </div>
+            <span>
+              {conexionFirestore === 'conectado'
+                ? '🟢 Conectado a Firebase Cloud'
+                : conexionFirestore === 'error'
+                ? '🔴 Error de Conexión o Permisos de Firestore'
+                : '🟡 Conectando a Firebase...'}
+            </span>
+          </button>
         </div>
 
         {/* User Profile & Logout Button */}
@@ -108,6 +122,36 @@ export const Navbar: React.FC<NavbarProps> = ({ tabActiva, setTabActiva }) => {
           </button>
         </div>
       </div>
+
+      {/* Connection / Permission Error Diagnostic Banner (Requisito 5) */}
+      {(conexionFirestore === 'error' || mostrarAlertaError) && (
+        <div className="bg-rose-950/95 border-y border-rose-800 px-4 py-3 text-xs text-rose-200 animate-fade-in shadow-xl">
+          <div className="max-w-7xl mx-auto flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-white text-sm">
+                  Alerta de Conexión o Permisos en Cloud Firestore
+                </p>
+                <p className="text-rose-300">
+                  {errorConexion ||
+                    'Las reglas de seguridad de Firestore están rechazando la solicitud o no hay conectividad con Firebase.'}
+                </p>
+                <p className="text-[11px] text-rose-300/80">
+                  Asegúrate de haber copiado las reglas de <strong>firestore.rules</strong> en la pestaña <em>Reglas</em> de la consola de Firebase y de tener configuradas las variables <code className="bg-rose-900/60 px-1 py-0.5 rounded text-white font-mono">NEXT_PUBLIC_FIREBASE_*</code>.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setMostrarAlertaError(false)}
+              className="text-rose-400 hover:text-white p-1 rounded-lg hover:bg-rose-900/60 transition"
+              title="Cerrar alerta"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Navigation Tabs */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

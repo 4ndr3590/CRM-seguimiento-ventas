@@ -70,6 +70,16 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
 
   useEffect(() => {
     cargarDatos();
+    const unsubUsuarios = dbService.subscribeUsuarios((usrs) => {
+      setUsuarios(usrs);
+    });
+    const unsubCats = dbService.subscribeCatalogos((cats) => {
+      setCatalogos(cats);
+    });
+    return () => {
+      unsubUsuarios();
+      unsubCats();
+    };
   }, []);
 
   const handleAgregarValor = () => {

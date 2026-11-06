@@ -4,7 +4,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Usuario, RolUsuario } from '@/types/crm';
 import { auth, isFirebaseConfigured } from '@/lib/firebase';
 import {
-  onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as fbSignOut,
@@ -14,9 +13,13 @@ import { USUARIOS_INICIALES } from '@/lib/defaultUsers';
 
 const SESSION_STORAGE_KEY = 'crm_active_session';
 
+export type EstadoConexionFirestore = 'conectado' | 'error' | 'verificando';
+
 interface AuthContextType {
   user: Usuario | null;
   loading: boolean;
+  conexionFirestore: EstadoConexionFirestore;
+  errorConexion: string | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   actualizarUsuarioSesion: (nuevo: Usuario) => void;
@@ -38,15 +41,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [usuariosDisponibles, setUsuariosDisponibles] = useState<Usuario[]>([]);
   const [user, setUser] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
+  const [conexionFirestore, setConexionFirestore] = useState<EstadoConexionFirestore>('verificando');
+  const [errorConexion, setErrorConexion] = useState<string | null>(null);
 
-  // Load all users from dbService
+  // Cargar lista de usuarios desde Cloud Firestore
   const refrescarUsuarios = async () => {
     try {
       const list = await dbService.getUsuarios();
       setUsuariosDisponibles(list);
+      setConexionFirestore('conectado');
+      setErrorConexion(null);
       return list;
-    } catch (e) {
-      console.warn('Error loading users:', e);
+    } catch (e: any) {
+      console.error('[Firestore] Error al cargar usuarios:', e);
+      setConexionFirestore('error');
+      setErrorConexion(e?.message || 'Error de permisos o conexión con Cloud Firestore');
       return [];
     }
   };
@@ -54,72 +63,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let isMounted = true;
 
-    const initAuth = async () => {
-      try {
-        const list = await refrescarUsuarios();
-
-        // 1. Check local session storage
-        let initialUser: Usuario | null = null;
-        if (typeof window !== 'undefined') {
-          const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-          if (raw) {
-            try {
-              const parsed = JSON.parse(raw) as Usuario;
-              // Validate user is still in system and active
-              const match = list.find(
-                (u) => u.email.toLowerCase() === parsed.email.toLowerCase() || u.uid === parsed.uid
-              );
-              if (match && match.activo) {
-                initialUser = match;
-              }
-            } catch {
-              localStorage.removeItem(SESSION_STORAGE_KEY);
-            }
+    // 1. Recuperar sesión activa existente en el navegador (único dato local permitido)
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as Usuario;
+          if (parsed && parsed.email) {
+            setUser(parsed);
           }
+        } catch {
+          localStorage.removeItem(SESSION_STORAGE_KEY);
         }
-
-        // 2. If Firebase Auth is configured, check auth state
-        if (isFirebaseConfigured() && auth) {
-          onAuthStateChanged(auth, async (fbUser) => {
-            if (!isMounted) return;
-            if (fbUser && fbUser.email) {
-              try {
-                let match = await dbService.getUsuarioPorUid(fbUser.uid);
-                if (!match) {
-                  match = await dbService.getUsuarioPorEmail(fbUser.email);
-                }
-                if (match && match.activo) {
-                  setUser(match);
-                  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(match));
-                } else if (match && !match.activo) {
-                  if (auth) await fbSignOut(auth);
-                  setUser(null);
-                  localStorage.removeItem(SESSION_STORAGE_KEY);
-                }
-              } catch (e) {
-                console.warn('Error loading user profile on auth state change:', e);
-              }
-            }
-          });
-        }
-
-        if (initialUser && isMounted) {
-          setUser(initialUser);
-        }
-      } catch (err) {
-        console.error('Error during auth initialization:', err);
-      } finally {
-        if (isMounted) setLoading(false);
       }
-    };
+    }
 
-    initAuth();
+    // 2. Suscribirse en tiempo real a la colección 'usuarios' de Cloud Firestore
+    const unsubscribeUsuarios = dbService.subscribeUsuarios(
+      (list) => {
+        if (!isMounted) return;
+        setUsuariosDisponibles(list);
+        setConexionFirestore('conectado');
+        setErrorConexion(null);
+        setLoading(false);
+
+        // Si el usuario actual está en sesión, sincronizar su perfil en vivo
+        setUser((currentUser) => {
+          if (!currentUser) return null;
+          const match = list.find(
+            (u) =>
+              u.email.toLowerCase() === currentUser.email.toLowerCase() ||
+              u.uid === currentUser.uid
+          );
+          if (match) {
+            if (!match.activo) {
+              // Si fue desactivado por un Administrador, cerrar su sesión de inmediato
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+              }
+              return null;
+            }
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(match));
+            }
+            return match;
+          }
+          return currentUser;
+        });
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.error('[Firestore] Error en suscripción a usuarios:', err);
+        setConexionFirestore('error');
+        setErrorConexion(err.message);
+        setLoading(false);
+      }
+    );
 
     return () => {
       isMounted = false;
+      unsubscribeUsuarios();
     };
   }, []);
 
+  // Inicio de Sesión 100% Online contra Cloud Firestore (+ enlace con Firebase Auth)
   const login = async (
     email: string,
     pass: string
@@ -132,151 +139,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      // 1. Si Firebase está activo, autenticar directamente en línea con Firebase Authentication
-      if (isFirebaseConfigured() && auth) {
-        let cred;
-        try {
-          cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-        } catch (fbErr: any) {
-          // Si el usuario es uno de los preconfigurados iniciales y aún no existe en Auth, auto-crear
-          const defaultUser = USUARIOS_INICIALES.find(
-            (u) => u.email.toLowerCase() === cleanEmail
-          );
-          if (
-            defaultUser &&
-            defaultUser.password === cleanPass &&
-            (fbErr.code === 'auth/user-not-found' ||
-              fbErr.code === 'auth/invalid-credential' ||
-              fbErr.code === 'auth/invalid-login-credentials')
-          ) {
-            try {
-              cred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
-            } catch (createErr: any) {
-              console.error('Auto-create default user in Auth error:', createErr);
-            }
-          }
+      // 1. Consultar usuario en Cloud Firestore
+      let userDoc = await dbService.getUsuarioPorEmail(cleanEmail);
 
-          if (!cred) {
-            if (
-              fbErr.code === 'auth/wrong-password' ||
-              fbErr.code === 'auth/invalid-credential' ||
-              fbErr.code === 'auth/invalid-login-credentials'
-            ) {
-              return {
-                success: false,
-                error: 'Contraseña incorrecta. Por favor verifica tus credenciales.',
-              };
-            }
-            if (fbErr.code === 'auth/user-not-found') {
-              return {
-                success: false,
-                error: 'No se encontró ningún usuario registrado con ese correo electrónico.',
-              };
-            }
-            if (fbErr.code === 'auth/too-many-requests') {
-              return {
-                success: false,
-                error: 'Demasiados intentos fallidos. Por favor intenta más tarde.',
-              };
-            }
-            return {
-              success: false,
-              error: `Error de autenticación: ${fbErr.message || 'Verifica tus credenciales.'}`,
-            };
-          }
-        }
-
-        // Usuario autenticado exitosamente en Firebase Authentication
-        // Ahora obtenemos su perfil sincronizado desde Cloud Firestore
-        let userDoc = await dbService.getUsuarioPorUid(cred.user.uid);
-        if (!userDoc) {
-          userDoc = await dbService.getUsuarioPorEmail(cleanEmail);
-          if (userDoc) {
-            userDoc.uid = cred.user.uid;
-            await dbService.guardarUsuario(userDoc, 'Sistema');
-          }
-        }
-
-        // Si no tiene perfil aún en Firestore, crearlo automáticamente
-        if (!userDoc) {
-          const defaultUser = USUARIOS_INICIALES.find(
-            (u) => u.email.toLowerCase() === cleanEmail
-          );
+      // Si no existe en Firestore, verificar si es uno de los usuarios iniciales oficiales
+      if (!userDoc) {
+        const defaultUser = USUARIOS_INICIALES.find(
+          (u) => u.email.toLowerCase() === cleanEmail
+        );
+        if (defaultUser && defaultUser.password === cleanPass) {
           userDoc = {
-            uid: cred.user.uid,
-            email: cleanEmail,
-            nombre: cred.user.displayName || defaultUser?.nombre || cleanEmail.split('@')[0],
-            rol: defaultUser?.rol || (cleanEmail.includes('admin') ? 'Administrador' : 'Analista'),
-            activo: true,
+            ...defaultUser,
             fecha_creacion: new Date().toISOString(),
           };
           await dbService.guardarUsuario(userDoc, 'Sistema');
         }
-
-        if (!userDoc.activo) {
-          if (auth) await fbSignOut(auth);
-          return {
-            success: false,
-            error: 'Tu usuario se encuentra inactivo. Por favor contacta al Administrador.',
-          };
-        }
-
-        setUser(userDoc);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(userDoc));
-        }
-
-        await dbService.registrarAuditoria({
-          usuario: userDoc.nombre || userDoc.email,
-          modulo: 'Autenticación',
-          accion: 'Inicio de Sesión',
-          detalle: `Inicio de sesión exitoso con perfil ${userDoc.rol} sincronizado en línea.`,
-        });
-
-        await refrescarUsuarios();
-        return { success: true };
       }
 
-      // 2. Modo fallback local si Firebase no estuviera disponible
-      const list = await dbService.getUsuarios();
-      const defaultUser = USUARIOS_INICIALES.find(
-        (u) => u.email.toLowerCase() === cleanEmail
-      );
-      let found = list.find((u) => u.email.toLowerCase() === cleanEmail) || defaultUser;
-
-      if (!found) {
+      if (!userDoc) {
         return {
           success: false,
           error: 'No se encontró ningún usuario registrado con ese correo electrónico.',
         };
       }
 
-      if (!found.activo) {
+      // Validar si la cuenta está activa
+      if (!userDoc.activo) {
         return {
           success: false,
           error: 'Tu usuario se encuentra inactivo. Por favor contacta al Administrador.',
         };
       }
 
-      const expectedPassword = found.password || defaultUser?.password;
-      if (expectedPassword && cleanPass !== expectedPassword) {
+      // Validar contraseña
+      if (userDoc.password && cleanPass !== userDoc.password) {
         return {
           success: false,
           error: 'Contraseña incorrecta. Por favor verifica tus credenciales.',
         };
       }
 
-      setUser(found);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(found));
+      // Usuario autenticado exitosamente en Firestore
+      // En segundo plano, sincronizar con Firebase Auth (no bloqueante en redes corporativas con proxy/firewall)
+      const fbAuth = auth;
+      if (isFirebaseConfigured() && fbAuth) {
+        signInWithEmailAndPassword(fbAuth, cleanEmail, cleanPass).catch(() => {
+          createUserWithEmailAndPassword(fbAuth, cleanEmail, cleanPass).catch(() => {
+            // Ignorar errores de red secundaria (ej. auth/network-request-failed)
+          });
+        });
       }
+
+      setUser(userDoc);
+      setConexionFirestore('conectado');
+      setErrorConexion(null);
+
+      // Guardar token/estado de sesión activa en el navegador
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(userDoc));
+      }
+
+      // Registrar evento en bitácora de auditoría online
+      await dbService.registrarAuditoria({
+        usuario: userDoc.nombre || userDoc.email,
+        modulo: 'Autenticación',
+        accion: 'Inicio de Sesión',
+        detalle: `Inicio de sesión exitoso con perfil ${userDoc.rol} sincronizado en Cloud Firestore.`,
+      });
 
       return { success: true };
     } catch (err: any) {
-      console.error('Login error:', err);
+      console.error('[Login] Error:', err);
+      setConexionFirestore('error');
+      setErrorConexion(err.message || 'Error al conectar con Cloud Firestore');
       return {
         success: false,
-        error: `Error al iniciar sesión: ${err.message || 'Error desconocido'}`,
+        error: `Error al iniciar sesión: ${err.message || 'Verifica tu conexión a Internet o permisos de Firestore.'}`,
       };
     }
   };
@@ -288,12 +226,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           usuario: user.nombre || user.email,
           modulo: 'Autenticación',
           accion: 'Cierre de Sesión',
-          detalle: `Sesión finalizada por el usuario.`,
+          detalle: 'Sesión finalizada por el usuario.',
         });
       }
 
       if (isFirebaseConfigured() && auth) {
-        await fbSignOut(auth);
+        await fbSignOut(auth).catch(() => {});
       }
     } catch (err) {
       console.warn('Logout warning:', err);
@@ -331,6 +269,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         loading,
+        conexionFirestore,
+        errorConexion,
         login,
         logout,
         actualizarUsuarioSesion,

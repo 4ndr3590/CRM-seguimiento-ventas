@@ -36,14 +36,25 @@ export default function HomePage() {
 
     setCargando(true);
 
-    const unsubClientes = dbService.subscribeClientes((listaClientes) => {
-      setClientes(listaClientes);
-      setCargando(false);
-    });
+    const unsubClientes = dbService.subscribeClientes(
+      (listaClientes) => {
+        setClientes(listaClientes);
+        setCargando(false);
+      },
+      (err) => {
+        console.error('Error suscribiendo a clientes en Cloud Firestore:', err);
+        setCargando(false);
+      }
+    );
 
-    const unsubGestiones = dbService.subscribeGestiones((listaGestiones) => {
-      setTodasGestiones(listaGestiones);
-    });
+    const unsubGestiones = dbService.subscribeGestiones(
+      (listaGestiones) => {
+        setTodasGestiones(listaGestiones);
+      },
+      (err) => {
+        console.error('Error suscribiendo a gestiones en Cloud Firestore:', err);
+      }
+    );
 
     return () => {
       unsubClientes();

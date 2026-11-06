@@ -33,6 +33,8 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
   const [contenidoTexto, setContenidoTexto] = useState('');
   const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
+  const [progreso, setProgreso] = useState<number>(0);
+  const [detalleProgreso, setDetalleProgreso] = useState<string>('');
   const [resumen, setResumen] = useState<CargaResumen | null>(null);
   const [modoEntrada, setModoEntrada] = useState<'archivo' | 'pegar'>('archivo');
 
@@ -164,16 +166,22 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
 
     setProcesando(true);
     setResumen(null);
+    setProgreso(0);
+    setDetalleProgreso('Iniciando procesamiento y consulta en Cloud Firestore...');
     try {
       const lineas = contenidoTexto.split(/\r?\n/);
       const resp = await dbService.procesarCargaBase(
         lineas,
-        user?.nombre || user?.email || 'Administrador'
+        user?.nombre || user?.email || 'Administrador',
+        (pct, detalle) => {
+          setProgreso(pct);
+          setDetalleProgreso(detalle);
+        }
       );
       setResumen(resp);
       onCargaCompleta();
     } catch (err: any) {
-      alert(`Error al procesar la carga: ${err.message}`);
+      alert(`Error al procesar la carga en Cloud Firestore: ${err.message}`);
     } finally {
       setProcesando(false);
     }
@@ -336,6 +344,26 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
           </button>
         </div>
       </div>
+
+      {/* Live Firestore Batch Progress Bar */}
+      {procesando && (
+        <div className="bg-slate-900 border border-blue-800/80 p-5 rounded-2xl shadow-2xl space-y-3 animate-fade-in">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-white flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+              <span>Sincronizando con Cloud Firestore en lotes de 450 registros...</span>
+            </span>
+            <span className="font-mono font-bold text-blue-400 text-sm">{progreso}%</span>
+          </div>
+          <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden border border-slate-700">
+            <div
+              className="bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-600 h-full rounded-full transition-all duration-300 shadow-lg shadow-blue-500/50"
+              style={{ width: `${Math.max(5, progreso)}%` }}
+            ></div>
+          </div>
+          <p className="text-[11px] text-slate-300 font-medium">{detalleProgreso}</p>
+        </div>
+      )}
 
       {/* Summary Report Card */}
       {resumen && (
