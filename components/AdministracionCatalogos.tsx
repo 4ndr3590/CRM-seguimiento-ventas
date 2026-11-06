@@ -14,13 +14,9 @@ import {
   AlertCircle,
   Shield,
   UserPlus,
-  RefreshCw,
-  Key,
-  Lock,
+  Pencil,
   Eye,
   EyeOff,
-  UserCheck,
-  UserX,
   X,
 } from 'lucide-react';
 
@@ -31,7 +27,7 @@ interface AdministracionCatalogosProps {
 export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = ({
   onCatalogosActualizados,
 }) => {
-  const { user, permisos } = useAuth();
+  const { user, permisos, actualizarUsuarioSesion } = useAuth();
   const [subTab, setSubTab] = useState<'catalogos' | 'usuarios'>('catalogos');
 
   // Catalogs state
@@ -51,11 +47,15 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
   const [creandoUsuario, setCreandoUsuario] = useState(false);
   const [userMensaje, setUserMensaje] = useState<string | null>(null);
 
-  // Edit password modal state
-  const [usuarioAEditarPassword, setUsuarioAEditarPassword] = useState<Usuario | null>(null);
-  const [nuevaPasswordModal, setNuevaPasswordModal] = useState('');
-  const [mostrarModalPass, setMostrarModalPass] = useState(false);
-  const [guardandoPasswordModal, setGuardandoPasswordModal] = useState(false);
+  // Edit User Modal State
+  const [usuarioAEditar, setUsuarioAEditar] = useState<Usuario | null>(null);
+  const [nombreEdit, setNombreEdit] = useState('');
+  const [emailEdit, setEmailEdit] = useState('');
+  const [rolEdit, setRolEdit] = useState<RolUsuario>('Analista');
+  const [passwordEdit, setPasswordEdit] = useState('');
+  const [activoEdit, setActivoEdit] = useState(true);
+  const [mostrarPasswordEdit, setMostrarPasswordEdit] = useState(false);
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
 
   const cargarDatos = async () => {
     try {
@@ -154,28 +154,56 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
     }
   };
 
-  const handleCambiarRolUsuario = async (u: Usuario, nuevoRol: RolUsuario) => {
-    try {
-      const updated: Usuario = { ...u, rol: nuevoRol };
-      await dbService.guardarUsuario(updated, user?.nombre || 'Administrador');
-      setUsuarios((prev) => prev.map((item) => (item.uid === u.uid ? updated : item)));
-    } catch (err: any) {
-      alert(`Error al actualizar rol: ${err.message}`);
-    }
+  const handleAbrirEditarUsuario = (u: Usuario) => {
+    setUsuarioAEditar(u);
+    setNombreEdit(u.nombre);
+    setEmailEdit(u.email);
+    setRolEdit(u.rol);
+    setPasswordEdit('');
+    setActivoEdit(u.activo);
+    setMostrarPasswordEdit(false);
   };
 
-  const handleToggleActivoUsuario = async (u: Usuario) => {
-    if (u.uid === user?.uid) {
-      alert('No puedes desactivar tu propia cuenta administradora activa.');
+  const handleGuardarEdicionUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!usuarioAEditar) return;
+
+    if (!nombreEdit.trim() || !emailEdit.trim()) {
+      alert('Nombre y correo electrónico son obligatorios.');
       return;
     }
 
+    if (passwordEdit.trim() && passwordEdit.trim().length < 6) {
+      alert('Si deseas cambiar la contraseña, debe tener al menos 6 caracteres.');
+      return;
+    }
+
+    setGuardandoEdit(true);
     try {
-      const updated: Usuario = { ...u, activo: !u.activo };
+      const updated: Usuario = {
+        ...usuarioAEditar,
+        nombre: nombreEdit.trim(),
+        email: emailEdit.trim(),
+        rol: rolEdit,
+        activo: activoEdit,
+        ...(passwordEdit.trim() ? { password: passwordEdit.trim() } : {}),
+      };
+
       await dbService.guardarUsuario(updated, user?.nombre || 'Administrador');
-      setUsuarios((prev) => prev.map((item) => (item.uid === u.uid ? updated : item)));
+      setUsuarios((prev) => prev.map((item) => (item.uid === updated.uid ? updated : item)));
+
+      // If updating the current active user, refresh active session in context
+      if (usuarioAEditar.uid === user?.uid) {
+        actualizarUsuarioSesion(updated);
+      }
+
+      setUserMensaje(`Usuario ${updated.email} actualizado exitosamente.`);
+      setTimeout(() => setUserMensaje(null), 4000);
+      setUsuarioAEditar(null);
     } catch (err: any) {
-      alert(`Error al actualizar estado del usuario: ${err.message}`);
+      alert(`Error al actualizar usuario: ${err.message}`);
+    } finally {
+      setGuardandoEdit(false);
     }
   };
 
@@ -194,33 +222,6 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
       setUsuarios((prev) => prev.filter((item) => item.uid !== u.uid));
     } catch (err: any) {
       alert(`Error al eliminar usuario: ${err.message}`);
-    }
-  };
-
-  const handleGuardarNuevaPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!usuarioAEditarPassword) return;
-
-    if (nuevaPasswordModal.trim().length < 6) {
-      alert('La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
-
-    setGuardandoPasswordModal(true);
-    try {
-      const updated: Usuario = {
-        ...usuarioAEditarPassword,
-        password: nuevaPasswordModal.trim(),
-      };
-      await dbService.guardarUsuario(updated, user?.nombre || 'Administrador');
-      setUsuarios((prev) => prev.map((item) => (item.uid === updated.uid ? updated : item)));
-      alert(`Contraseña actualizada con éxito para el usuario ${updated.email}.`);
-      setUsuarioAEditarPassword(null);
-      setNuevaPasswordModal('');
-    } catch (err: any) {
-      alert(`Error al actualizar contraseña: ${err.message}`);
-    } finally {
-      setGuardandoPasswordModal(false);
     }
   };
 
@@ -260,7 +261,7 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
             Módulo 7: Administración de Catálogos y Usuarios
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Configuración dinámica de catálogos desplegables y administración de accesos y contraseñas por perfil.
+            Configuración dinámica de catálogos desplegables y administración integral de usuarios y accesos.
           </p>
         </div>
 
@@ -493,50 +494,47 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
                     <span className="text-slate-400 font-mono text-[11px]">{u.email}</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Role Dropdown */}
-                    <select
-                      value={u.rol}
-                      onChange={(e) => handleCambiarRolUsuario(u, e.target.value as RolUsuario)}
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                    >
-                      <option value="Administrador">Administrador</option>
-                      <option value="Analista">Analista</option>
-                      <option value="Consulta">Consulta</option>
-                    </select>
-
-                    {/* Change Password Button */}
-                    <button
-                      onClick={() => {
-                        setUsuarioAEditarPassword(u);
-                        setNuevaPasswordModal('');
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition"
-                      title="Cambiar contraseña de este usuario"
-                    >
-                      <Key className="w-3 h-3 text-amber-400" />
-                      <span>Clave</span>
-                    </button>
-
-                    {/* Active / Inactive Toggle */}
-                    <button
-                      onClick={() => handleToggleActivoUsuario(u)}
-                      className={`text-[10px] px-2 py-1 rounded font-medium border transition ${
-                        u.activo
-                          ? 'bg-emerald-950 text-emerald-400 border-emerald-800 hover:bg-rose-950 hover:text-rose-400 hover:border-rose-800'
-                          : 'bg-rose-950 text-rose-400 border-rose-800 hover:bg-emerald-950 hover:text-emerald-400 hover:border-emerald-800'
+                  <div className="flex items-center gap-2.5">
+                    {/* Role Badge (Read-Only) */}
+                    <span
+                      className={`text-[10px] px-2.5 py-1 rounded-lg font-bold border ${
+                        u.rol === 'Administrador'
+                          ? 'bg-purple-950/80 text-purple-300 border-purple-800/80'
+                          : u.rol === 'Analista'
+                          ? 'bg-blue-950/80 text-blue-300 border-blue-800/80'
+                          : 'bg-amber-950/80 text-amber-300 border-amber-800/80'
                       }`}
-                      title={u.activo ? 'Clic para desactivar acceso' : 'Clic para activar acceso'}
+                    >
+                      {u.rol}
+                    </span>
+
+                    {/* Status Badge */}
+                    <span
+                      className={`text-[10px] px-2.5 py-1 rounded-lg font-medium border ${
+                        u.activo
+                          ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
+                          : 'bg-rose-950 text-rose-400 border-rose-800'
+                      }`}
                     >
                       {u.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+
+                    {/* Pencil Edit Button (Applies to all users including current profile) */}
+                    <button
+                      onClick={() => handleAbrirEditarUsuario(u)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 transition font-medium"
+                      title="Editar usuario (nombre, correo, rol, contraseña, estado)"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Editar</span>
                     </button>
 
-                    {/* Delete User */}
+                    {/* Delete User (Cannot delete yourself) */}
                     {u.uid !== user?.uid && (
                       <button
                         onClick={() => handleEliminarUsuario(u)}
-                        className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-800 transition"
-                        title="Eliminar usuario"
+                        className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition"
+                        title="Eliminar usuario permanentemente"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -549,67 +547,117 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
         </div>
       )}
 
-      {/* Modal: Cambiar Contraseña de Usuario */}
-      {usuarioAEditarPassword && (
+      {/* Modal: Editar Usuario Completo */}
+      {usuarioAEditar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Key className="w-4 h-4 text-amber-400" />
-                <span>Asignar Nueva Contraseña</span>
+                <Pencil className="w-4 h-4 text-blue-400" />
+                <span>Editar Usuario</span>
               </h3>
               <button
-                onClick={() => setUsuarioAEditarPassword(null)}
+                onClick={() => setUsuarioAEditar(null)}
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="text-xs text-slate-300">
-              Usuario: <strong className="text-white">{usuarioAEditarPassword.nombre}</strong> (
-              {usuarioAEditarPassword.email})
-            </div>
+            <form onSubmit={handleGuardarEdicionUsuario} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">Nombre Completo *</label>
+                <input
+                  type="text"
+                  required
+                  value={nombreEdit}
+                  onChange={(e) => setNombreEdit(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
 
-            <form onSubmit={handleGuardarNuevaPassword} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">Correo Electrónico *</label>
+                <input
+                  type="email"
+                  required
+                  value={emailEdit}
+                  onChange={(e) => setEmailEdit(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">Perfil / Rol *</label>
+                <select
+                  value={rolEdit}
+                  onChange={(e) => setRolEdit(e.target.value as RolUsuario)}
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+                  <option value="Administrador">Administrador (Control Total)</option>
+                  <option value="Analista">Analista (Gestiones y Barridos)</option>
+                  <option value="Consulta">Consulta (Solo Lectura)</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-slate-400 font-medium mb-1">
-                  Nueva Contraseña * (mínimo 6 caracteres)
+                  Contraseña (opcional, mínimo 6 caracteres)
                 </label>
                 <div className="relative">
                   <input
-                    type={mostrarModalPass ? 'text' : 'password'}
-                    required
+                    type={mostrarPasswordEdit ? 'text' : 'password'}
                     minLength={6}
-                    value={nuevaPasswordModal}
-                    onChange={(e) => setNuevaPasswordModal(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 pr-9 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    value={passwordEdit}
+                    onChange={(e) => setPasswordEdit(e.target.value)}
+                    placeholder="Dejar en blanco para conservar la actual"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 pr-9 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none placeholder-slate-500"
                   />
                   <button
                     type="button"
-                    onClick={() => setMostrarModalPass(!mostrarModalPass)}
+                    onClick={() => setMostrarPasswordEdit(!mostrarPasswordEdit)}
                     className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-white"
                   >
-                    {mostrarModalPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {mostrarPasswordEdit ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
+                <span className="text-[10px] text-slate-500 block mt-0.5">
+                  Si no deseas cambiar la clave, déjala vacía.
+                </span>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">Estado de la Cuenta</label>
+                <select
+                  value={activoEdit ? 'activo' : 'inactivo'}
+                  disabled={usuarioAEditar.uid === user?.uid}
+                  onChange={(e) => setActivoEdit(e.target.value === 'activo')}
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none disabled:opacity-50"
+                >
+                  <option value="activo">Activo (Permite acceso al sistema)</option>
+                  <option value="inactivo">Inactivo (Acceso bloqueado)</option>
+                </select>
+                {usuarioAEditar.uid === user?.uid && (
+                  <span className="text-[10px] text-amber-400/80 block mt-0.5">
+                    No puedes desactivar tu propia cuenta activa.
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setUsuarioAEditarPassword(null)}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition"
+                  onClick={() => setUsuarioAEditar(null)}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition font-medium"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={guardandoPasswordModal || nuevaPasswordModal.trim().length < 6}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl shadow-lg transition disabled:opacity-50"
+                  disabled={guardandoEdit || !nombreEdit.trim() || !emailEdit.trim()}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl shadow-lg shadow-purple-900/40 transition disabled:opacity-50"
                 >
-                  {guardandoPasswordModal ? 'Guardando...' : 'Actualizar Contraseña'}
+                  {guardandoEdit ? 'Guardando Cambios...' : 'Guardar Cambios'}
                 </button>
               </div>
             </form>

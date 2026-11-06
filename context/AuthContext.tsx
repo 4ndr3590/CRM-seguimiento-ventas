@@ -19,6 +19,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  actualizarUsuarioSesion: (nuevo: Usuario) => void;
   refrescarUsuarios: () => Promise<Usuario[]>;
   usuariosDisponibles: Usuario[];
   permisos: {
@@ -225,6 +226,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const actualizarUsuarioSesion = (nuevo: Usuario) => {
+    setUser(nuevo);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nuevo));
+    }
+  };
+
   const rol: RolUsuario = user?.rol || 'Consulta';
 
   const permisos = {
@@ -246,6 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         login,
         logout,
+        actualizarUsuarioSesion,
         refrescarUsuarios,
         usuariosDisponibles,
         permisos,
