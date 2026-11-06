@@ -9,11 +9,9 @@ import {
   EyeOff,
   Shield,
   Activity,
-  CheckCircle2,
   AlertCircle,
   Database,
   ArrowRight,
-  Sparkles,
 } from 'lucide-react';
 
 export const LoginScreen: React.FC = () => {
@@ -39,12 +37,6 @@ export const LoginScreen: React.FC = () => {
     } finally {
       setCargando(false);
     }
-  };
-
-  const handlePrellenar = (correoDemo: string, claveDemo: string) => {
-    setEmail(correoDemo);
-    setPassword(claveDemo);
-    setError(null);
   };
 
   return (
@@ -143,7 +135,7 @@ export const LoginScreen: React.FC = () => {
             <button
               type="submit"
               disabled={cargando || !email.trim() || !password.trim()}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-blue-600/30 transition disabled:opacity-50 mt-2"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-blue-600/30 transition disabled:opacity-50 mt-4"
             >
               {cargando ? (
                 <>
@@ -159,54 +151,9 @@ export const LoginScreen: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick Profiles Guide */}
-          <div className="pt-3 border-t border-slate-800 space-y-2">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-              Perfiles Registrados en el Sistema:
-            </span>
-            <div className="grid grid-cols-1 gap-1.5 text-[11px]">
-              <button
-                type="button"
-                onClick={() => handlePrellenar('admin@crmventas.com', 'Admin123*')}
-                className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition text-left"
-              >
-                <div>
-                  <span className="font-bold text-purple-300 block">Administrador</span>
-                  <span className="text-slate-400 text-[10px]">admin@crmventas.com</span>
-                </div>
-                <span className="text-[10px] text-purple-400 font-semibold px-2 py-0.5 rounded bg-purple-950/60 border border-purple-800/60">
-                  Autocompletar
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handlePrellenar('analista@crmventas.com', 'Analista123*')}
-                className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition text-left"
-              >
-                <div>
-                  <span className="font-bold text-blue-300 block">Analista</span>
-                  <span className="text-slate-400 text-[10px]">analista@crmventas.com</span>
-                </div>
-                <span className="text-[10px] text-blue-400 font-semibold px-2 py-0.5 rounded bg-blue-950/60 border border-blue-800/60">
-                  Autocompletar
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handlePrellenar('consulta@crmventas.com', 'Consulta123*')}
-                className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition text-left"
-              >
-                <div>
-                  <span className="font-bold text-amber-300 block">Consulta (Solo Lectura)</span>
-                  <span className="text-slate-400 text-[10px]">consulta@crmventas.com</span>
-                </div>
-                <span className="text-[10px] text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-950/60 border border-amber-800/60">
-                  Autocompletar
-                </span>
-              </button>
-            </div>
+          {/* Security Notice */}
+          <div className="pt-2 text-center text-[11px] text-slate-500">
+            Acceso estrictamente reservado para usuarios autorizados.
           </div>
         </div>
 
