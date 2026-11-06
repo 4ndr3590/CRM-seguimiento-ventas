@@ -1107,22 +1107,101 @@ export const dbService = {
         const snap = await getDocs(collection(firestore, 'usuarios'));
         const list: Usuario[] = [];
         snap.forEach((d) => list.push(d.data() as Usuario));
-        if (list.length > 0) return list;
 
         // Si la colección de usuarios está vacía en Firestore, registrar usuarios por defecto
+        if (list.length === 0) {
+          const batch = writeBatch(firestore);
+          USUARIOS_INICIALES.forEach((u) => {
+            const ref = doc(firestore, 'usuarios', u.uid);
+            batch.set(ref, u);
+          });
+          await batch.commit();
+          return USUARIOS_INICIALES;
+        }
+
+        // Asegurar que todos los usuarios existentes tengan contraseñas asignadas
+        let needsBatchUpdate = false;
         const batch = writeBatch(firestore);
-        USUARIOS_INICIALES.forEach((u) => {
-          const ref = doc(firestore, 'usuarios', u.uid);
-          batch.set(ref, u);
+
+        const updatedList = list.map((user) => {
+          if (!user.password) {
+            const defaultMatch = USUARIOS_INICIALES.find(
+              (u) => u.email.toLowerCase() === user.email.toLowerCase()
+            );
+            const fallbackPass =
+              defaultMatch?.password ||
+              (user.rol === 'Administrador'
+                ? 'Admin123*'
+                : user.rol === 'Analista'
+                ? 'Analista123*'
+                : 'Consulta123*');
+
+            needsBatchUpdate = true;
+            try {
+              batch.update(doc(firestore, 'usuarios', user.uid), {
+                password: fallbackPass,
+              });
+            } catch {
+              // ignore
+            }
+            return { ...user, password: fallbackPass };
+          }
+          return user;
         });
-        await batch.commit();
-        return USUARIOS_INICIALES;
+
+        // Asegurar que los 3 perfiles oficiales existan en Firestore
+        USUARIOS_INICIALES.forEach((initUser) => {
+          const exists = updatedList.some(
+            (u) => u.email.toLowerCase() === initUser.email.toLowerCase()
+          );
+          if (!exists) {
+            needsBatchUpdate = true;
+            try {
+              batch.set(doc(firestore, 'usuarios', initUser.uid), initUser);
+              updatedList.push(initUser);
+            } catch {
+              // ignore
+            }
+          }
+        });
+
+        if (needsBatchUpdate) {
+          await batch.commit().catch((e) => console.warn('Batch update users error:', e));
+        }
+
+        return updatedList;
       } catch (e) {
         console.warn('Firestore getUsuarios error:', e);
       }
     }
+
     ensureMockStorageInitialized();
-    return getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+    const localUsers = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+    const enriched = localUsers.map((u) => {
+      if (!u.password) {
+        const def = USUARIOS_INICIALES.find((i) => i.email.toLowerCase() === u.email.toLowerCase());
+        return {
+          ...u,
+          password:
+            def?.password ||
+            (u.rol === 'Administrador'
+              ? 'Admin123*'
+              : u.rol === 'Analista'
+              ? 'Analista123*'
+              : 'Consulta123*'),
+        };
+      }
+      return u;
+    });
+
+    USUARIOS_INICIALES.forEach((initUser) => {
+      if (!enriched.some((u) => u.email.toLowerCase() === initUser.email.toLowerCase())) {
+        enriched.push(initUser);
+      }
+    });
+
+    setLocal(STORAGE_KEY_USUARIOS, enriched);
+    return enriched;
   },
 
   async guardarUsuario(usuario: Usuario, adminResponsable: string): Promise<void> {

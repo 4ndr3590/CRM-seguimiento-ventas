@@ -20,6 +20,15 @@ export const USUARIOS_INICIALES: Usuario[] = [
     fecha_creacion: '2026-01-01T00:00:00.000Z',
   },
   {
+    uid: 'analista_1',
+    email: 'analista1@crmventas.com',
+    nombre: 'Lucía Fernández (Analista)',
+    rol: 'Analista',
+    password: 'Analista123*',
+    activo: true,
+    fecha_creacion: '2026-01-01T00:00:00.000Z',
+  },
+  {
     uid: 'consulta_principal',
     email: 'consulta@crmventas.com',
     nombre: 'Mariana Silva (Consulta)',

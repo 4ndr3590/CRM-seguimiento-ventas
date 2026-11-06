@@ -3,8 +3,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Usuario, RolUsuario } from '@/types/crm';
 import { auth, isFirebaseConfigured } from '@/lib/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as fbSignOut,
+} from 'firebase/auth';
 import { dbService } from '@/lib/dbService';
+import { USUARIOS_INICIALES } from '@/lib/defaultUsers';
 
 const SESSION_STORAGE_KEY = 'crm_active_session';
 
@@ -120,8 +126,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const list = await dbService.getUsuarios();
 
-      // Find user in database records
-      const found = list.find((u) => u.email.toLowerCase() === cleanEmail);
+      // Buscar en la lista de base de datos o en usuarios iniciales
+      const defaultUser = USUARIOS_INICIALES.find(
+        (u) => u.email.toLowerCase() === cleanEmail
+      );
+      let found = list.find((u) => u.email.toLowerCase() === cleanEmail) || defaultUser;
 
       if (!found) {
         return {
@@ -137,37 +146,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      // Check with Firebase Auth first if configured
-      let firebaseAuthSuccess = false;
+      // Contraseña esperada
+      const expectedPassword = found.password || defaultUser?.password;
+
+      // Validar contraseña
+      if (expectedPassword && cleanPass !== expectedPassword) {
+        return {
+          success: false,
+          error: 'Contraseña incorrecta. Por favor verifica tus credenciales.',
+        };
+      }
+
+      // Si Firebase Auth está activo, iniciar sesión o registrar en Auth para poblar request.auth
       if (isFirebaseConfigured() && auth) {
         try {
-          const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-          if (cred.user) {
-            firebaseAuthSuccess = true;
-          }
+          await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
         } catch (fbErr: any) {
-          // If Firebase Auth fails, we still check the database record password
-          console.warn('Firebase Auth sign-in attempt notice:', fbErr.code || fbErr.message);
+          // Si el usuario no existe en Firebase Authentication aún, crearlo automáticamente
+          if (
+            fbErr.code === 'auth/user-not-found' ||
+            fbErr.code === 'auth/invalid-credential' ||
+            fbErr.code === 'auth/invalid-login-credentials'
+          ) {
+            try {
+              await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+            } catch (createErr: any) {
+              console.warn('Firebase Auth auto-provision notice:', createErr.message);
+            }
+          }
         }
       }
 
-      // Check database password match
-      if (!firebaseAuthSuccess) {
-        if (!found.password || found.password !== cleanPass) {
-          return {
-            success: false,
-            error: 'Contraseña incorrecta. Por favor verifica tus credenciales.',
-          };
-        }
-      }
-
-      // User authenticated successfully
+      // Usuario autenticado exitosamente
       setUser(found);
       if (typeof window !== 'undefined') {
         localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(found));
       }
 
-      // Record audit event
+      // Registrar evento de auditoría
       await dbService.registrarAuditoria({
         usuario: found.nombre || found.email,
         modulo: 'Autenticación',
