@@ -141,11 +141,12 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
       };
 
       await dbService.guardarUsuario(nuevo, user?.nombre || 'Administrador');
-      setUsuarios((prev) => [nuevo, ...prev]);
+      const refreshed = await dbService.getUsuarios();
+      setUsuarios(refreshed);
       setNombreNuevo('');
       setEmailNuevo('');
       setPasswordNuevo('');
-      setUserMensaje(`Usuario ${nuevo.email} registrado con éxito con rol ${nuevo.rol} y contraseña asignada.`);
+      setUserMensaje(`Usuario ${nuevo.email} registrado con éxito con rol ${nuevo.rol} y sincronizado en línea.`);
       setTimeout(() => setUserMensaje(null), 4000);
     } catch (err: any) {
       alert(`Error al crear usuario: ${err.message}`);
@@ -190,14 +191,15 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
       };
 
       await dbService.guardarUsuario(updated, user?.nombre || 'Administrador');
-      setUsuarios((prev) => prev.map((item) => (item.uid === updated.uid ? updated : item)));
+      const refreshed = await dbService.getUsuarios();
+      setUsuarios(refreshed);
 
       // If updating the current active user, refresh active session in context
       if (usuarioAEditar.uid === user?.uid) {
         actualizarUsuarioSesion(updated);
       }
 
-      setUserMensaje(`Usuario ${updated.email} actualizado exitosamente.`);
+      setUserMensaje(`Usuario ${updated.email} actualizado y sincronizado exitosamente.`);
       setTimeout(() => setUserMensaje(null), 4000);
       setUsuarioAEditar(null);
     } catch (err: any) {
@@ -219,7 +221,8 @@ export const AdministracionCatalogos: React.FC<AdministracionCatalogosProps> = (
 
     try {
       await dbService.eliminarUsuario(u.uid, user?.nombre || 'Administrador');
-      setUsuarios((prev) => prev.filter((item) => item.uid !== u.uid));
+      const refreshed = await dbService.getUsuarios();
+      setUsuarios(refreshed);
     } catch (err: any) {
       alert(`Error al eliminar usuario: ${err.message}`);
     }

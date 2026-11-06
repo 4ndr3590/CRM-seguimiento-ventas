@@ -3,12 +3,12 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '',
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '',
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyDPuy9pJCFXsUbdDK583bPkm0BWz16aKGI',
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'crm-seguimiento-ventas.firebaseapp.com',
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'crm-seguimiento-ventas',
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'crm-seguimiento-ventas.firebasestorage.app',
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '135485826004',
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:135485826004:web:3ebd744466b29bb7faec41',
 };
 
 export const isFirebaseConfigured = (): boolean => {

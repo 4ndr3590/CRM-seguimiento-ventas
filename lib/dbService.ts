@@ -1204,6 +1204,40 @@ export const dbService = {
     return enriched;
   },
 
+  async getUsuarioPorUid(uid: string): Promise<Usuario | null> {
+    const firestore = db;
+    if (isFirebaseConfigured() && firestore) {
+      try {
+        const snap = await getDoc(doc(firestore, 'usuarios', uid));
+        if (snap.exists()) {
+          return snap.data() as Usuario;
+        }
+      } catch (e) {
+        console.warn('Firestore getUsuarioPorUid error:', e);
+      }
+    }
+    const local = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+    return local.find((u) => u.uid === uid) || null;
+  },
+
+  async getUsuarioPorEmail(email: string): Promise<Usuario | null> {
+    const firestore = db;
+    const clean = email.trim().toLowerCase();
+    if (isFirebaseConfigured() && firestore) {
+      try {
+        const q = query(collection(firestore, 'usuarios'), where('email', '==', clean));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          return snap.docs[0].data() as Usuario;
+        }
+      } catch (e) {
+        console.warn('Firestore getUsuarioPorEmail error:', e);
+      }
+    }
+    const local = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+    return local.find((u) => u.email.toLowerCase() === clean) || null;
+  },
+
   async guardarUsuario(usuario: Usuario, adminResponsable: string): Promise<void> {
     const nowISO = new Date().toISOString();
     const firestore = db;
@@ -1224,7 +1258,7 @@ export const dbService = {
 
     if (isFirebaseConfigured() && firestore) {
       try {
-        await setDoc(doc(firestore, 'usuarios', usuario.uid), usuario);
+        await setDoc(doc(firestore, 'usuarios', usuario.uid), usuario, { merge: true });
         const auditId = `aud_${Date.now()}`;
         await setDoc(doc(firestore, 'bitacora_auditoria', auditId), {
           id: auditId,
@@ -1234,6 +1268,18 @@ export const dbService = {
           accion: 'Guardar Usuario',
           detalle: `Usuario ${usuario.email} (${usuario.rol}) registrado o actualizado en Firestore.`,
         });
+
+        // Actualizar almacenamiento local para coherencia inmediata en la pestaña actual
+        ensureMockStorageInitialized();
+        const list = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+        const idx = list.findIndex((u) => u.uid === usuario.uid || u.email.toLowerCase() === usuario.email.toLowerCase());
+        if (idx !== -1) {
+          list[idx] = usuario;
+        } else {
+          list.unshift(usuario);
+        }
+        setLocal(STORAGE_KEY_USUARIOS, list);
+        emitLocalDbChange('usuario_guardado');
         return;
       } catch (e) {
         console.warn('Firestore guardarUsuario error:', e);
@@ -1276,13 +1322,20 @@ export const dbService = {
           usuario: adminResponsable,
           modulo: 'Administración de Usuarios',
           accion: 'Eliminar Usuario',
-          detalle: `Usuario con identificador ${uid} eliminado por el Administrador.`,
+          detalle: `Usuario con UID ${uid} eliminado de Firestore.`,
         });
+
+        ensureMockStorageInitialized();
+        const list = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
+        setLocal(STORAGE_KEY_USUARIOS, list.filter((u) => u.uid !== uid));
+        emitLocalDbChange('usuario_eliminado');
         return;
       } catch (e) {
         console.warn('Firestore eliminarUsuario error:', e);
       }
     }
+
+    ensureMockStorageInitialized();
     const list = getLocal<Usuario[]>(STORAGE_KEY_USUARIOS, USUARIOS_INICIALES);
     setLocal(STORAGE_KEY_USUARIOS, list.filter((u) => u.uid !== uid));
     emitLocalDbChange('usuario_eliminado');

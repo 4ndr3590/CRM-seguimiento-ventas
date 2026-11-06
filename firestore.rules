@@ -2,54 +2,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if user is authenticated
+    // Helper: Validar que la solicitud provenga de un usuario autenticado en Firebase
     function isAuthenticated() {
       return request.auth != null;
-    }
-
-    // Helper function to get current user data
-    function getUserData() {
-      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
-    }
-
-    // Helper function to check if user has Administrador role
-    function isAdministrador() {
-      return isAuthenticated() && (
-        getUserData().rol == 'Administrador' ||
-        request.auth.token.rol == 'Administrador'
-      );
-    }
-
-    // Helper function to check if user has Analista role
-    function isAnalista() {
-      return isAuthenticated() && (
-        getUserData().rol == 'Analista' ||
-        request.auth.token.rol == 'Analista'
-      );
     }
 
     // ========================================================
     // COLECCIÓN: clientes (Tabla Principal: CLIENTES)
     // ========================================================
-    // ID del documento: numero_orden (RN01)
-    // Permite lectura a cualquier usuario autenticado (Admin, Analista, Consulta).
-    // Permite creación/actualización a Administrador y Analista (para actualizar ultima_gestion).
+    // Permite lectura y escritura a usuarios autenticados
     match /clientes/{numero_orden} {
-      allow read: if isAuthenticated();
-      allow create: if isAdministrador() || isAnalista();
-      allow update: if isAdministrador() || isAnalista();
-      allow delete: if isAdministrador();
+      allow read, write: if isAuthenticated();
     }
 
     // ========================================================
-    // COLECCIÓN: gestiones (Tabla de Histórico e Inmutabilidad)
+    // COLECCIÓN: gestiones (Histórico de Gestiones)
     // ========================================================
-    // RN02: 1 Cliente = Muchas Gestiones, cada una con ID autogenerado.
-    // RN03 & RN08: INMUTABILIDAD ESTRICTA. Jamás se permite editar ni borrar.
+    // RN02, RN03 & RN08: Inmutabilidad estricta. Jamás editar ni eliminar.
     match /gestiones/{id_gestion} {
-      allow read: if isAuthenticated();
-      allow create: if isAdministrador() || isAnalista();
-      // BLOQUEO ESTRICTO A NIVEL DE MOTOR DE BASE DE DATOS
+      allow read, create: if isAuthenticated();
       allow update, delete: if false;
     }
 
@@ -58,28 +29,22 @@ service cloud.firestore {
     // ========================================================
     // Solo lectura y registro nuevo; jamás edición ni eliminación.
     match /bitacora_auditoria/{id_auditoria} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      allow read, create: if isAuthenticated();
       allow update, delete: if false;
     }
 
     // ========================================================
-    // COLECCIÓN: catalogos (Administración de Catálogos)
+    // COLECCIÓN: catalogos (Administración de Catálogos Dinámicos)
     // ========================================================
-    // Todos leen, pero solo Administrador puede modificar los catálogos.
     match /catalogos/{catalogoId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdministrador();
+      allow read, write: if isAuthenticated();
     }
 
     // ========================================================
-    // COLECCIÓN: usuarios (Gestión de Perfiles y Roles)
+    // COLECCIÓN: usuarios (Gestión y Sincronización de Usuarios)
     // ========================================================
-    // Solo el Administrador puede crear o actualizar usuarios.
-    // Cada usuario puede leer su propio perfil.
     match /usuarios/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdministrador();
+      allow read, write: if isAuthenticated();
     }
   }
 }

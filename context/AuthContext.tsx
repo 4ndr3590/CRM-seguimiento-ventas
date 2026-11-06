@@ -83,14 +83,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           onAuthStateChanged(auth, async (fbUser) => {
             if (!isMounted) return;
             if (fbUser && fbUser.email) {
-              const updatedList = await dbService.getUsuarios();
-              const match = updatedList.find(
-                (u) =>
-                  u.email.toLowerCase() === fbUser.email!.toLowerCase() || u.uid === fbUser.uid
-              );
-              if (match && match.activo) {
-                setUser(match);
-                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(match));
+              try {
+                let match = await dbService.getUsuarioPorUid(fbUser.uid);
+                if (!match) {
+                  match = await dbService.getUsuarioPorEmail(fbUser.email);
+                }
+                if (match && match.activo) {
+                  setUser(match);
+                  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(match));
+                } else if (match && !match.activo) {
+                  if (auth) await fbSignOut(auth);
+                  setUser(null);
+                  localStorage.removeItem(SESSION_STORAGE_KEY);
+                }
+              } catch (e) {
+                console.warn('Error loading user profile on auth state change:', e);
               }
             }
           });
@@ -125,9 +132,113 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const list = await dbService.getUsuarios();
+      // 1. Si Firebase está activo, autenticar directamente en línea con Firebase Authentication
+      if (isFirebaseConfigured() && auth) {
+        let cred;
+        try {
+          cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+        } catch (fbErr: any) {
+          // Si el usuario es uno de los preconfigurados iniciales y aún no existe en Auth, auto-crear
+          const defaultUser = USUARIOS_INICIALES.find(
+            (u) => u.email.toLowerCase() === cleanEmail
+          );
+          if (
+            defaultUser &&
+            defaultUser.password === cleanPass &&
+            (fbErr.code === 'auth/user-not-found' ||
+              fbErr.code === 'auth/invalid-credential' ||
+              fbErr.code === 'auth/invalid-login-credentials')
+          ) {
+            try {
+              cred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+            } catch (createErr: any) {
+              console.error('Auto-create default user in Auth error:', createErr);
+            }
+          }
 
-      // Buscar en la lista de base de datos o en usuarios iniciales
+          if (!cred) {
+            if (
+              fbErr.code === 'auth/wrong-password' ||
+              fbErr.code === 'auth/invalid-credential' ||
+              fbErr.code === 'auth/invalid-login-credentials'
+            ) {
+              return {
+                success: false,
+                error: 'Contraseña incorrecta. Por favor verifica tus credenciales.',
+              };
+            }
+            if (fbErr.code === 'auth/user-not-found') {
+              return {
+                success: false,
+                error: 'No se encontró ningún usuario registrado con ese correo electrónico.',
+              };
+            }
+            if (fbErr.code === 'auth/too-many-requests') {
+              return {
+                success: false,
+                error: 'Demasiados intentos fallidos. Por favor intenta más tarde.',
+              };
+            }
+            return {
+              success: false,
+              error: `Error de autenticación: ${fbErr.message || 'Verifica tus credenciales.'}`,
+            };
+          }
+        }
+
+        // Usuario autenticado exitosamente en Firebase Authentication
+        // Ahora obtenemos su perfil sincronizado desde Cloud Firestore
+        let userDoc = await dbService.getUsuarioPorUid(cred.user.uid);
+        if (!userDoc) {
+          userDoc = await dbService.getUsuarioPorEmail(cleanEmail);
+          if (userDoc) {
+            userDoc.uid = cred.user.uid;
+            await dbService.guardarUsuario(userDoc, 'Sistema');
+          }
+        }
+
+        // Si no tiene perfil aún en Firestore, crearlo automáticamente
+        if (!userDoc) {
+          const defaultUser = USUARIOS_INICIALES.find(
+            (u) => u.email.toLowerCase() === cleanEmail
+          );
+          userDoc = {
+            uid: cred.user.uid,
+            email: cleanEmail,
+            nombre: cred.user.displayName || defaultUser?.nombre || cleanEmail.split('@')[0],
+            rol: defaultUser?.rol || (cleanEmail.includes('admin') ? 'Administrador' : 'Analista'),
+            activo: true,
+            fecha_creacion: new Date().toISOString(),
+          };
+          await dbService.guardarUsuario(userDoc, 'Sistema');
+        }
+
+        if (!userDoc.activo) {
+          if (auth) await fbSignOut(auth);
+          return {
+            success: false,
+            error: 'Tu usuario se encuentra inactivo. Por favor contacta al Administrador.',
+          };
+        }
+
+        setUser(userDoc);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(userDoc));
+        }
+
+        await dbService.registrarAuditoria({
+          usuario: userDoc.nombre || userDoc.email,
+          modulo: 'Autenticación',
+          accion: 'Inicio de Sesión',
+          detalle: `Inicio de sesión exitoso con perfil ${userDoc.rol} sincronizado en línea.`,
+        });
+
+        await refrescarUsuarios();
+        return { success: true };
+      }
+
+      // 2. Modo fallback local si Firebase no estuviera disponible
+      const list = await dbService.getUsuarios();
       const defaultUser = USUARIOS_INICIALES.find(
         (u) => u.email.toLowerCase() === cleanEmail
       );
@@ -147,10 +258,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      // Contraseña esperada
       const expectedPassword = found.password || defaultUser?.password;
-
-      // Validar contraseña
       if (expectedPassword && cleanPass !== expectedPassword) {
         return {
           success: false,
@@ -158,39 +266,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      // Si Firebase Auth está activo, iniciar sesión o registrar en Auth para poblar request.auth
-      if (isFirebaseConfigured() && auth) {
-        try {
-          await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-        } catch (fbErr: any) {
-          // Si el usuario no existe en Firebase Authentication aún, crearlo automáticamente
-          if (
-            fbErr.code === 'auth/user-not-found' ||
-            fbErr.code === 'auth/invalid-credential' ||
-            fbErr.code === 'auth/invalid-login-credentials'
-          ) {
-            try {
-              await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
-            } catch (createErr: any) {
-              console.warn('Firebase Auth auto-provision notice:', createErr.message);
-            }
-          }
-        }
-      }
-
-      // Usuario autenticado exitosamente
       setUser(found);
       if (typeof window !== 'undefined') {
         localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(found));
       }
-
-      // Registrar evento de auditoría
-      await dbService.registrarAuditoria({
-        usuario: found.nombre || found.email,
-        modulo: 'Autenticación',
-        accion: 'Inicio de Sesión',
-        detalle: `Inicio de sesión exitoso con perfil ${found.rol}.`,
-      });
 
       return { success: true };
     } catch (err: any) {
