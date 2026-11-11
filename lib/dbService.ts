@@ -38,6 +38,15 @@ function getFirestoreDb() {
   return db;
 }
 
+export function esValorSi(val?: string | null): boolean {
+  const lower = (val || '').trim().toLowerCase();
+  return lower === 'sí' || lower === 'si';
+}
+
+export function esEstadoEnrolado(val?: string | null): boolean {
+  return (val || '').trim().toLowerCase() === 'enrolado';
+}
+
 // ----------------------------------------------------
 // SERVICIO DE BASE DE DATOS ONLINE (CLOUD FIRESTORE)
 // 100% Sincronizado en tiempo real sin almacenamiento mock/local
@@ -251,8 +260,10 @@ export const dbService = {
     // Usar writeBatch para operación atómica en Firestore:
     // 1. Guardar nueva gestión inmutable
     // 2. Actualizar última gestión del cliente para refrescar Dashboard en tiempo real
-    // 3. Registrar en bitácora de auditoría
+    // 3. Regla adicional: Consumo = Sí => Entregado = Sí y Enrolamiento = Enrolado automáticamente
+    // 4. Registrar en bitácora de auditoría
     const batch = writeBatch(firestore);
+    const activaPorConsumo = esValorSi(data.consumo);
 
     const gestionRef = doc(firestore, 'gestiones', id_gestion);
     batch.set(gestionRef, nuevaGestion);
@@ -261,6 +272,12 @@ export const dbService = {
     batch.update(clienteRef, {
       ultima_gestion: nuevaGestion,
       fecha_actualizacion: nowISO,
+      ...(activaPorConsumo
+        ? {
+            entregado: 'Sí',
+            estatus_enrolamiento: 'Enrolado' as EstatusEnrolamiento,
+          }
+        : {}),
     });
 
     const auditId = `aud_${Date.now()}`;
@@ -271,11 +288,37 @@ export const dbService = {
       usuario: usuarioResponsable,
       modulo: 'Gestión de Barridos',
       accion: data.venta_cerrada === 'Sí' ? 'Cierre de Caso' : 'Registro de Gestión',
-      detalle: `Gestión registrada para orden ${data.numero_orden}. Motivo: ${data.motivo}. Venta Cerrada: ${data.venta_cerrada}.`,
+      detalle: `Gestión registrada para orden ${data.numero_orden}. Motivo: ${data.motivo}. Venta Cerrada: ${data.venta_cerrada}.${
+        activaPorConsumo ? ' Regla automática Consumo=Sí: Entregado=Sí y Enrolamiento=Enrolado.' : ''
+      }`,
     });
 
     await batch.commit();
     return nuevaGestion;
+  },
+
+  // Regla automática: toda venta gestionada con Consumo = Sí => Entregado = Sí y Enrolamiento = Enrolado
+  async sincronizarEstadosPorConsumoSi(numerosOrden: string[]): Promise<number> {
+    if (numerosOrden.length === 0) return 0;
+    const firestore = getFirestoreDb();
+    const nowISO = new Date().toISOString();
+    const CHUNK_SIZE = 450;
+
+    for (let i = 0; i < numerosOrden.length; i += CHUNK_SIZE) {
+      const batch = writeBatch(firestore);
+      const chunk = numerosOrden.slice(i, i + CHUNK_SIZE);
+      chunk.forEach((numeroOrden) => {
+        const ref = doc(firestore, 'clientes', numeroOrden);
+        batch.update(ref, {
+          entregado: 'Sí',
+          estatus_enrolamiento: 'Enrolado',
+          fecha_actualizacion: nowISO,
+        });
+      });
+      await batch.commit();
+    }
+
+    return numerosOrden.length;
   },
 
   // Carga de Bases Online en Chunks de 450 con Cruce en Firestore (RN01, RN08, RN09)
@@ -306,12 +349,23 @@ export const dbService = {
       clienteExistenteMap.set(cl.numero_orden.trim().toUpperCase(), cl);
     });
 
+    // Consultar gestiones históricas con Consumo = Sí para garantizar consistencia y preservación
+    const gestionesConsumoSiSnap = await getDocs(
+      query(collection(firestore, 'gestiones'), where('consumo', 'in', ['Sí', 'Si', 'sí', 'si', 'SÍ', 'SI']))
+    );
+    const ordenesConConsumoSi = new Set<string>();
+    gestionesConsumoSiSnap.forEach((d) => {
+      const g = d.data() as Gestion;
+      if (g.numero_orden) {
+        ordenesConConsumoSi.add(g.numero_orden.trim().toUpperCase());
+      }
+    });
+
     const operacionesNuevas: Cliente[] = [];
     const operacionesActualizar: {
       numero_orden: string;
       estatus: EstatusEnrolamiento;
       ciclo?: string;
-      consumo?: string;
       entrega_chip?: string;
       entregado?: string;
     }[] = [];
@@ -447,15 +501,43 @@ export const dbService = {
 
       const key = numeroOrden.toUpperCase();
       if (clienteExistenteMap.has(key)) {
-        // REGISTRO EXISTENTE: Actualizar únicamente Estatus, Ciclo, Consumo, Entrega de Chip y Entregado (RN08, RN09)
+        // REGISTRO EXISTENTE: Actualizar únicamente Estatus, Ciclo, Entrega de Chip y Entregado (RN08, RN09).
+        // Se mantiene intacto Consumo y el histórico de gestiones.
         const clienteActual = clienteExistenteMap.get(key)!;
+        const tieneConsumoSiGestion =
+          esValorSi(clienteActual.ultima_gestion?.consumo) || ordenesConConsumoSi.has(key);
+
+        // Regla de preservación + regla adicional (Consumo = Sí):
+        // Una vez Entregado = Sí y/o Enrolamiento = Enrolado, jamás se modifican ni revierten por cargues posteriores.
+        const conservarEnrolado =
+          esEstadoEnrolado(clienteActual.estatus_enrolamiento) || tieneConsumoSiGestion;
+        const conservarEntregadoSi =
+          esValorSi(clienteActual.entregado) || tieneConsumoSiGestion;
+
+        const estatusFinal: EstatusEnrolamiento = conservarEnrolado ? 'Enrolado' : estatus;
+        const cicloFinal = cicloProvided ? ciclo : (clienteActual.ciclo ?? '');
+        const entregaChipFinal = entregaChipProvided
+          ? entregaChip
+          : (clienteActual.entrega_chip ?? 'CAC');
+        const entregadoFinal = conservarEntregadoSi
+          ? 'Sí'
+          : entregadoProvided
+          ? entregado
+          : (clienteActual.entregado ?? '');
+
         operacionesActualizar.push({
           numero_orden: clienteActual.numero_orden,
-          estatus,
-          ciclo: cicloProvided ? ciclo : (clienteActual.ciclo ?? ''),
-          consumo: consumoProvided ? consumo : (clienteActual.consumo ?? 'NA'),
-          entrega_chip: entregaChipProvided ? entregaChip : (clienteActual.entrega_chip ?? 'CAC'),
-          entregado: entregadoProvided ? entregado : (clienteActual.entregado ?? ''),
+          estatus: estatusFinal,
+          ciclo: cicloFinal,
+          entrega_chip: entregaChipFinal,
+          entregado: entregadoFinal,
+        });
+        clienteExistenteMap.set(key, {
+          ...clienteActual,
+          estatus_enrolamiento: estatusFinal,
+          ciclo: cicloFinal,
+          entrega_chip: entregaChipFinal,
+          entregado: entregadoFinal,
         });
         resumen.actualizados++;
       } else {
@@ -510,7 +592,6 @@ export const dbService = {
         batch.update(ref, {
           estatus_enrolamiento: u.estatus,
           ...(u.ciclo !== undefined ? { ciclo: u.ciclo } : {}),
-          ...(u.consumo !== undefined ? { consumo: u.consumo } : {}),
           ...(u.entrega_chip !== undefined ? { entrega_chip: u.entrega_chip } : {}),
           ...(u.entregado !== undefined ? { entregado: u.entregado } : {}),
           fecha_actualizacion: nowISO,

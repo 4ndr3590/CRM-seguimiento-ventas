@@ -77,6 +77,10 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
     // 1. Auto-cargar Estado de la Línea, Entrega de Chip, ¿Ya Recibió el Chip?, Consumo desde BD
     setEstado(cliente.ultima_gestion?.estado || 'Activo');
 
+    const entregadoEsSi =
+      (cliente.entregado || '').trim().toLowerCase() === 'sí' ||
+      (cliente.entregado || '').trim().toLowerCase() === 'si';
+
     if (baseEsMasReciente) {
       setEntregaChip(
         cliente.entrega_chip
@@ -84,26 +88,29 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
           : cliente.ultima_gestion?.entrega_chip || 'CAC'
       );
       setRecibioChip(
-        cliente.entregado
+        entregadoEsSi
+          ? 'Entregado'
+          : cliente.entregado
           ? mapearEntregadoARecibio(cliente.entregado)
           : cliente.ultima_gestion?.recibio_chip || 'NA'
-      );
-      setConsumo(
-        cliente.consumo
-          ? normalizarConsumo(cliente.consumo)
-          : cliente.ultima_gestion?.consumo || 'NA'
       );
     } else {
       setEntregaChip(
         cliente.ultima_gestion?.entrega_chip || normalizarEntregaChip(cliente.entrega_chip)
       );
       setRecibioChip(
-        cliente.ultima_gestion?.recibio_chip || mapearEntregadoARecibio(cliente.entregado)
-      );
-      setConsumo(
-        cliente.ultima_gestion?.consumo || normalizarConsumo(cliente.consumo)
+        entregadoEsSi
+          ? 'Entregado'
+          : cliente.ultima_gestion?.recibio_chip || mapearEntregadoARecibio(cliente.entregado)
       );
     }
+
+    // Consumo: la carga de base ya no sobrescribe Consumo en existentes, priorizar última gestión
+    setConsumo(
+      cliente.ultima_gestion?.consumo
+        ? normalizarConsumo(cliente.ultima_gestion.consumo)
+        : normalizarConsumo(cliente.consumo)
+    );
 
     // 2. Contactabilidad, Motivo de la Gestión, Tarea Realizada y ¿Venta Cerrada? SIEMPRE vacíos por defecto
     setContactabilidad('');
@@ -448,6 +455,17 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
               </select>
             </div>
           </div>
+
+          {(consumo === 'Sí' || (consumo as string).toLowerCase() === 'si') && (
+            <div className="bg-emerald-950/50 border border-emerald-700/70 text-emerald-300 px-4 py-2.5 rounded-xl text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" />
+              <span>
+                <strong>Regla automática:</strong> Al guardar esta gestión con <strong>Consumo = Sí</strong>, el
+                registro del cliente se actualizará automáticamente a <strong>Entregado = Sí</strong> y{' '}
+                <strong>Enrolamiento = Enrolado</strong>.
+              </span>
+            </div>
+          )}
 
           {/* Observaciones (RN06) */}
           <div>

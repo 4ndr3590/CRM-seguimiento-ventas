@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Cliente, Gestion } from '@/types/crm';
-import { dbService } from '@/lib/dbService';
+import { dbService, esValorSi, esEstadoEnrolado } from '@/lib/dbService';
 import { useAuth } from '@/context/AuthContext';
 import { Navbar } from '@/components/Navbar';
 import { LoginScreen } from '@/components/LoginScreen';
@@ -29,9 +29,15 @@ export default function HomePage() {
   // Filter state passed from Dashboard click
   const [filtroSinGestionActivo, setFiltroSinGestionActivo] = useState(false);
 
+  // Track orders already synced for Consumo=Sí -> Entregado=Sí & Enrolado in this session
+  const ordenesReglaAplicadaRef = useRef<Set<string>>(new Set());
+
   // Real-time listeners for Clientes & Gestiones (RN12) when authenticated
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      ordenesReglaAplicadaRef.current.clear();
+      return;
+    }
 
     setCargando(true);
 
@@ -60,6 +66,41 @@ export default function HomePage() {
       unsubGestiones();
     };
   }, [user]);
+
+  // Regla automática: toda venta gestionada con Consumo = Sí debe quedar en Entregado = Sí y Enrolamiento = Enrolado
+  useEffect(() => {
+    if (!user || clientes.length === 0) return;
+
+    const ordenesConConsumoSi = new Set<string>();
+    todasGestiones.forEach((g) => {
+      if (esValorSi(g.consumo) && g.numero_orden) {
+        ordenesConConsumoSi.add(g.numero_orden.trim().toUpperCase());
+      }
+    });
+
+    const pendientes: string[] = [];
+    clientes.forEach((c) => {
+      if (!c.numero_orden) return;
+      const key = c.numero_orden.trim().toUpperCase();
+      const tieneConsumoSi = esValorSi(c.ultima_gestion?.consumo) || ordenesConConsumoSi.has(key);
+      if (!tieneConsumoSi) return;
+
+      const faltaEntregado = !esValorSi(c.entregado) || c.entregado !== 'Sí';
+      const faltaEnrolado = !esEstadoEnrolado(c.estatus_enrolamiento) || c.estatus_enrolamiento !== 'Enrolado';
+
+      if ((faltaEntregado || faltaEnrolado) && !ordenesReglaAplicadaRef.current.has(c.numero_orden)) {
+        pendientes.push(c.numero_orden);
+        ordenesReglaAplicadaRef.current.add(c.numero_orden);
+      }
+    });
+
+    if (pendientes.length > 0) {
+      dbService.sincronizarEstadosPorConsumoSi(pendientes).catch((err) => {
+        console.error('Error aplicando regla automática Consumo=Sí:', err);
+        pendientes.forEach((ord) => ordenesReglaAplicadaRef.current.delete(ord));
+      });
+    }
+  }, [user, clientes, todasGestiones]);
 
   // Role-based protection: redirect if user role does not allow active tab
   useEffect(() => {

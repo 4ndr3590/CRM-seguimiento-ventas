@@ -267,8 +267,10 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
               <strong className="text-blue-400 font-mono">Registro Existente:</strong>
               <span>
                 Si la orden ya existe, actualiza <strong>únicamente</strong> los campos{' '}
-                <code>Estatus</code>, <code>Ciclo</code>, <code>Consumo</code>, <code>Entrega de Chip</code> y{' '}
-                <code>Entregado</code>, manteniendo intacto el histórico de gestiones, observaciones y barridos (RN08, RN09).
+                <code>Estatus</code>, <code>Ciclo</code>, <code>Entrega de Chip</code> y{' '}
+                <code>Entregado</code>, manteniendo intacto el histórico de gestiones y barridos previos (RN08, RN09).
+                Si ya registró <code>Entregado = Sí</code>, <code>Enrolamiento = Enrolado</code> o gestión con{' '}
+                <code>Consumo = Sí</code>, dichos estados se conservan sin revertirse.
               </span>
             </li>
           </ul>
@@ -389,7 +391,9 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
             <div className="bg-blue-950/40 p-3 rounded-xl border border-blue-800">
               <span className="text-blue-400 block mb-1 font-semibold">Órdenes Actualizadas</span>
               <span className="text-xl font-bold text-blue-300">{resumen.actualizados}</span>
-              <span className="text-[10px] text-blue-400 block mt-0.5">RN08/09: Solo Estatus enrolamiento</span>
+              <span className="text-[10px] text-blue-400 block mt-0.5">
+                RN08/09: Estatus, Ciclo, Entrega Chip y Entregado
+              </span>
             </div>
 
             <div className="bg-rose-950/40 p-3 rounded-xl border border-rose-800">
