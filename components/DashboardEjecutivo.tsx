@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Users,
   CheckCircle,
-  Clock,
   Smartphone,
   PhoneCall,
   Calendar,
@@ -28,7 +27,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
 } from 'recharts';
 
 interface DashboardEjecutivoProps {
@@ -47,6 +45,42 @@ const COLORS = [
   '#ec4899', // pink
   '#64748b', // slate
 ];
+
+function extraerMesISO(fechaStr?: string): string {
+  if (!fechaStr) return '';
+  const clean = fechaStr.trim();
+  // YYYY-MM-DD, YYYY/MM/DD or ISO timestamp
+  const isoMatch = clean.match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}`;
+  }
+  // DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}`;
+  }
+  return '';
+}
+
+function formatearMesLabel(ym: string): string {
+  const [y, m] = ym.split('-');
+  const meses = [
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
+  ];
+  const idx = parseInt(m, 10) - 1;
+  return idx >= 0 && idx < 12 ? `${meses[idx]} ${y}` : ym;
+}
 
 const renderCompactPieLabel = ({
   cx,
@@ -82,35 +116,58 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
   todasGestiones,
   onVerClientesSinGestion,
 }) => {
-  const [periodoProductividad, setPeriodoProductividad] = useState<'dia' | 'semana' | 'mes'>('dia');
+  const [mesFiltro, setMesFiltro] = useState<string>('todos');
   const [exportandoPDF, setExportandoPDF] = useState(false);
+
+  // Meses disponibles extraídos dinámicamente desde fecha_venta
+  const mesesDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    clientes.forEach((c) => {
+      const ym = extraerMesISO(c.fecha_venta);
+      if (ym) set.add(ym);
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [clientes]);
+
+  // Base de clientes filtrada por el período seleccionado
+  const clientesFiltrados = useMemo(() => {
+    if (mesFiltro === 'todos') return clientes;
+    return clientes.filter((c) => extraerMesISO(c.fecha_venta) === mesFiltro);
+  }, [clientes, mesFiltro]);
+
+  // Histórico de gestiones filtrado para los clientes del período seleccionado
+  const gestionesFiltradas = useMemo(() => {
+    if (mesFiltro === 'todos') return todasGestiones;
+    const ordenesSet = new Set(clientesFiltrados.map((c) => c.numero_orden));
+    return todasGestiones.filter((g) => ordenesSet.has(g.numero_orden));
+  }, [todasGestiones, clientesFiltrados, mesFiltro]);
 
   // ========================================================
   // RN04: Construir indicadores EXCLUSIVAMENTE con la última gestión
   // RN05, RN13: Clientes sin gestión se clasifican como "Sin Gestión"
   // ========================================================
   const stats = useMemo(() => {
-    const totalClientes = clientes.length;
+    const totalClientes = clientesFiltrados.length;
 
     let sinGestionCount = 0;
     let conGestionCount = 0;
 
-    // 1. Entrega SIM
+    // Entrega SIM
     let chipEntregado = 0;
     let chipSinEntrega = 0;
 
-    // 2. Enrolamiento
+    // Enrolamiento
     let enrolados = 0;
     let noEnrolados = 0;
 
-    // 3. Tipología de Venta
+    // Tipología de Venta
     const tipologiaMap: Record<string, number> = {
       Portabilidad: 0,
       Adición: 0,
       Migración: 0,
     };
 
-    // 4. Estado de la Línea
+    // Estado de la Línea
     const estadoMap: Record<string, number> = {
       Activo: 0,
       Inactivo: 0,
@@ -118,7 +175,7 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
       'Sin Gestión': 0,
     };
 
-    // 5. Consumo
+    // Consumo
     const consumoMap: Record<string, number> = {
       Sí: 0,
       No: 0,
@@ -126,7 +183,7 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
       'Sin Gestión': 0,
     };
 
-    // 6. Motivo
+    // Motivo
     const motivoMap: Record<string, number> = {
       'No contactado': 0,
       'No reconoce la venta': 0,
@@ -137,11 +194,14 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
       'Sin Gestión': 0,
     };
 
-    // 8. Ventas Cerradas (RN07)
+    // Ventas Cerradas (RN07)
     let ventasCerradas = 0;
     let ventasActivas = 0;
 
-    clientes.forEach((c) => {
+    // % Ventas Activas con motivo "Activa y en uso"
+    let activaEnUsoCount = 0;
+
+    clientesFiltrados.forEach((c) => {
       // Tipología y Enrolamiento provienen de la ficha base del cliente
       if (tipologiaMap[c.tipo_venta] !== undefined) {
         tipologiaMap[c.tipo_venta]++;
@@ -191,8 +251,16 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
         } else {
           ventasActivas++;
         }
+
+        // Ventas activas con motivo "Activa y en uso"
+        if (u.estado === 'Activo' && u.motivo === 'Activa y en uso') {
+          activaEnUsoCount++;
+        }
       }
     });
+
+    const porcentajeActivaEnUso =
+      totalClientes > 0 ? Number(((activaEnUsoCount / totalClientes) * 100).toFixed(1)) : 0;
 
     return {
       totalClientes,
@@ -201,7 +269,7 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
       porcentajeSinGestion: totalClientes > 0 ? Math.round((sinGestionCount / totalClientes) * 100) : 0,
       porcentajeConGestion: totalClientes > 0 ? Math.round((conGestionCount / totalClientes) * 100) : 0,
 
-      // 1. SIM
+      // Entrega de SIM
       chipEntregado,
       chipSinEntrega,
       dataChip: [
@@ -209,7 +277,7 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
         { name: 'Sin Entrega / NA', value: chipSinEntrega },
       ],
 
-      // 2. Enrolamiento
+      // Enrolamiento
       enrolados,
       noEnrolados,
       dataEnrolamiento: [
@@ -217,65 +285,42 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
         { name: 'No Enrolado', value: noEnrolados },
       ],
 
-      // 3. Tipología
+      // Tipología de Venta
       dataTipologia: Object.keys(tipologiaMap).map((k) => ({ name: k, value: tipologiaMap[k] })),
 
-      // 4. Estado Línea
+      // Estado de la Línea
       dataEstado: Object.keys(estadoMap)
         .filter((k) => estadoMap[k] > 0)
         .map((k) => ({ name: k, value: estadoMap[k] })),
 
-      // 5. Consumo
+      // Consumo de Tráfico
       dataConsumo: Object.keys(consumoMap)
         .filter((k) => consumoMap[k] > 0)
         .map((k) => ({ name: k, value: consumoMap[k] })),
 
-      // 6. Motivo
+      // Motivo de la Gestión
       dataMotivo: Object.keys(motivoMap)
         .filter((k) => motivoMap[k] > 0)
         .map((k) => ({ name: k, value: motivoMap[k] })),
 
-      // 8. Ventas Cerradas
+      // Ventas Cerradas
       ventasCerradas,
       ventasActivas,
       dataVentasCerradas: [
         { name: 'Ventas Cerradas', value: ventasCerradas },
         { name: 'Ventas Activas', value: ventasActivas },
       ],
+
+      // Activas con motivo "Activa y en uso" vs Total Base
+      activaEnUsoCount,
+      otrasBaseCount: Math.max(0, totalClientes - activaEnUsoCount),
+      porcentajeActivaEnUso,
+      dataActivaEnUso: [
+        { name: 'Activa y en uso', value: activaEnUsoCount },
+        { name: 'Resto de la Base', value: Math.max(0, totalClientes - activaEnUsoCount) },
+      ],
     };
-  }, [clientes]);
-
-  // ========================================================
-  // 9. Productividad: Gestiones por Día, Semana, Mes segmentadas por usuario
-  // ========================================================
-  const productividad = useMemo(() => {
-    const now = new Date();
-    const mapUsuarios: Record<string, number> = {};
-
-    todasGestiones.forEach((g) => {
-      const gDate = new Date(g.fecha_hora_gestion);
-      const diffMs = now.getTime() - gDate.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-      let include = false;
-      if (periodoProductividad === 'dia' && diffDays <= 1) include = true;
-      else if (periodoProductividad === 'semana' && diffDays <= 7) include = true;
-      else if (periodoProductividad === 'mes' && diffDays <= 30) include = true;
-
-      if (include) {
-        const u = g.usuario_responsable || 'Sin Asignar';
-        mapUsuarios[u] = (mapUsuarios[u] || 0) + 1;
-      }
-    });
-
-    const data = Object.keys(mapUsuarios).map((usuario) => ({
-      usuario: usuario.replace(/\(.*\)/, '').trim(),
-      gestiones: mapUsuarios[usuario],
-      usuarioCompleto: usuario,
-    }));
-
-    return data.sort((a, b) => b.gestiones - a.gestiones);
-  }, [todasGestiones, periodoProductividad]);
+  }, [clientesFiltrados]);
 
   const handleDescargarPDF = async () => {
     setExportandoPDF(true);
@@ -290,7 +335,7 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top action bar: Title & Export Button */}
+      {/* Top action bar: Title, Period Filter & Export Button */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-xl">
         <div>
           <h1 className="text-xl font-extrabold text-white flex items-center gap-2">
@@ -302,7 +347,30 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Periodo (Mes) Filter */}
+          <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-1.5">
+            <Calendar className="w-4 h-4 text-blue-400 flex-shrink-0" />
+            <span className="text-[11px] font-semibold text-slate-400 uppercase flex items-center gap-1">
+              <Filter className="w-3 h-3" />
+              Período:
+            </span>
+            <select
+              value={mesFiltro}
+              onChange={(e) => setMesFiltro(e.target.value)}
+              className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="todos" className="bg-slate-900 text-white">
+                Todos los Meses (Base Completa)
+              </option>
+              {mesesDisponibles.map((ym) => (
+                <option key={ym} value={ym} className="bg-slate-900 text-white">
+                  {formatearMesLabel(ym)} ({ym})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={handleDescargarPDF}
             disabled={exportandoPDF}
@@ -326,10 +394,12 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               <Users className="w-4 h-4 text-blue-400" />
             </div>
             <div className="mt-2 text-2xl font-black text-white">{stats.totalClientes}</div>
-            <div className="text-[11px] text-slate-400 mt-1">Clientes cargados en el sistema</div>
+            <div className="text-[11px] text-slate-400 mt-1">
+              {mesFiltro === 'todos' ? 'Clientes cargados en el sistema' : `Período: ${formatearMesLabel(mesFiltro)}`}
+            </div>
           </div>
 
-          {/* 7. Gestión Pendiente ("Sin Gestión" - RN05, RN13) */}
+          {/* Gestión Pendiente ("Sin Gestión" - RN05, RN13) */}
           <div
             onClick={onVerClientesSinGestion}
             className="bg-amber-950/30 border border-amber-800/60 p-4 rounded-2xl shadow-lg relative overflow-hidden cursor-pointer hover:border-amber-500 transition group"
@@ -348,7 +418,7 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
             </div>
           </div>
 
-          {/* 8. Ventas Cerradas */}
+          {/* Ventas Cerradas */}
           <div className="bg-emerald-950/30 border border-emerald-800/60 p-4 rounded-2xl shadow-lg relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-emerald-400 uppercase">Ventas Cerradas (RN07)</span>
@@ -369,95 +439,19 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               <span className="text-xs font-semibold text-purple-400 uppercase">Histórico Gestiones</span>
               <Layers className="w-4 h-4 text-purple-400" />
             </div>
-            <div className="mt-2 text-2xl font-black text-purple-300">{todasGestiones.length}</div>
+            <div className="mt-2 text-2xl font-black text-purple-300">{gestionesFiltradas.length}</div>
             <div className="text-[11px] text-purple-400/80 mt-1">Barridos inmutables (RN02, RN03)</div>
           </div>
         </div>
 
-        {/* Charts Grid: First Row (4 Pie charts) */}
+        {/* Charts Grid: First Row (1, 2, 3) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* 1. Entrega de SIM */}
-          <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-blue-400" />
-                1. Entrega de SIM (Chip)
-              </h3>
-              <span className="text-[10px] text-slate-500 font-mono">Última gestión</span>
-            </div>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
-                  <Pie
-                    data={stats.dataChip}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={36}
-                    outerRadius={54}
-                    paddingAngle={4}
-                    dataKey="value"
-                    label={renderCompactPieLabel}
-                    labelLine={false}
-                  >
-                    <Cell fill="#10b981" />
-                    <Cell fill="#f59e0b" />
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex justify-around text-xs text-slate-300 border-t border-slate-800 pt-2">
-              <span>Entregado: <strong>{stats.chipEntregado}</strong></span>
-              <span>Sin Entrega: <strong>{stats.chipSinEntrega}</strong></span>
-            </div>
-          </div>
-
-          {/* 2. Enrolamiento */}
-          <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-                2. Enrolamiento
-              </h3>
-              <span className="text-[10px] text-slate-500 font-mono">Base Clientes</span>
-            </div>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
-                  <Pie
-                    data={stats.dataEnrolamiento}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={36}
-                    outerRadius={54}
-                    paddingAngle={4}
-                    dataKey="value"
-                    label={renderCompactPieLabel}
-                    labelLine={false}
-                  >
-                    <Cell fill="#059669" />
-                    <Cell fill="#e11d48" />
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex justify-around text-xs text-slate-300 border-t border-slate-800 pt-2">
-              <span>Enrolado: <strong>{stats.enrolados}</strong></span>
-              <span>No Enrolado: <strong>{stats.noEnrolados}</strong></span>
-            </div>
-          </div>
-
-          {/* 3. Tipología de Venta */}
+          {/* 1. Tipología de Venta */}
           <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <Layers className="w-4 h-4 text-indigo-400" />
-                3. Tipología de Venta
+                1. Tipología de Venta
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Port/Adic/Migr</span>
             </div>
@@ -481,16 +475,13 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Charts Grid: Second Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* 4. Estado de la Línea */}
+          {/* 2. Estado de la Línea */}
           <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-amber-400" />
-                4. Estado de la Línea
+                2. Estado de la Línea
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Activo/Inac/Predes</span>
             </div>
@@ -527,12 +518,12 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
             </div>
           </div>
 
-          {/* 5. Consumo */}
+          {/* 3. Consumo de Tráfico */}
           <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <PhoneCall className="w-4 h-4 text-cyan-400" />
-                5. Consumo de Tráfico
+                3. Consumo de Tráfico
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Sí / No / NA</span>
             </div>
@@ -556,13 +547,16 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               ))}
             </div>
           </div>
+        </div>
 
-          {/* 8. Ventas Cerradas vs Activas */}
+        {/* Charts Grid: Second Row (4, 6, 7) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* 4. Ventas Cerradas (RN07) */}
           <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <Award className="w-4 h-4 text-emerald-400" />
-                8. Ventas Cerradas (RN07)
+                4. Ventas Cerradas (RN07)
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">Cerradas vs Activas</span>
             </div>
@@ -594,16 +588,92 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
               <span>Activas: <strong>{stats.ventasActivas}</strong></span>
             </div>
           </div>
+
+          {/* 6. Enrolamiento */}
+          <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                6. Enrolamiento
+              </h3>
+              <span className="text-[10px] text-slate-500 font-mono">Base Clientes</span>
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
+                  <Pie
+                    data={stats.dataEnrolamiento}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={36}
+                    outerRadius={54}
+                    paddingAngle={4}
+                    dataKey="value"
+                    label={renderCompactPieLabel}
+                    labelLine={false}
+                  >
+                    <Cell fill="#059669" />
+                    <Cell fill="#e11d48" />
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex justify-around text-xs text-slate-300 border-t border-slate-800 pt-2">
+              <span>Enrolado: <strong>{stats.enrolados}</strong></span>
+              <span>No Enrolado: <strong>{stats.noEnrolados}</strong></span>
+            </div>
+          </div>
+
+          {/* 7. Entrega de SIM */}
+          <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-blue-400" />
+                7. Entrega de SIM
+              </h3>
+              <span className="text-[10px] text-slate-500 font-mono">Última gestión</span>
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 10, right: 25, bottom: 10, left: 25 }}>
+                  <Pie
+                    data={stats.dataChip}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={36}
+                    outerRadius={54}
+                    paddingAngle={4}
+                    dataKey="value"
+                    label={renderCompactPieLabel}
+                    labelLine={false}
+                  >
+                    <Cell fill="#10b981" />
+                    <Cell fill="#f59e0b" />
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex justify-around text-xs text-slate-300 border-t border-slate-800 pt-2">
+              <span>Entregado: <strong>{stats.chipEntregado}</strong></span>
+              <span>Sin Entrega: <strong>{stats.chipSinEntrega}</strong></span>
+            </div>
+          </div>
         </div>
 
-        {/* Charts Grid: Third Row (Motivo + Productividad) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 6. Motivo de la Gestión */}
-          <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
+        {/* Charts Grid: Third Row (5 + Additional "% Ventas Activas: Activa y en uso") */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 5. Motivo de la Gestión */}
+          <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <FileText className="w-4 h-4 text-purple-400" />
-                6. Motivo de la Gestión (Distribución de Cartera - RN04)
+                5. Motivo de la Gestión (Distribución de Cartera - RN04)
               </h3>
               <span className="text-[10px] text-slate-500 font-mono">6 Categorías oficiales</span>
             </div>
@@ -615,7 +685,7 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
                   margin={{ top: 5, right: 20, left: 40, bottom: 5 }}
                 >
                   <XAxis type="number" stroke="#94a3b8" fontSize={11} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={10} width={130} />
+                  <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={10} width={150} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px' }}
                   />
@@ -625,65 +695,51 @@ export const DashboardEjecutivo: React.FC<DashboardEjecutivoProps> = ({
             </div>
           </div>
 
-          {/* 9. Productividad Segmentada por Usuario */}
-          <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  9. Productividad Operativa
-                </h3>
-                <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-xs">
-                  <button
-                    onClick={() => setPeriodoProductividad('dia')}
-                    className={`px-2.5 py-1 rounded font-medium transition ${
-                      periodoProductividad === 'dia' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Hoy
-                  </button>
-                  <button
-                    onClick={() => setPeriodoProductividad('semana')}
-                    className={`px-2.5 py-1 rounded font-medium transition ${
-                      periodoProductividad === 'semana' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Semana
-                  </button>
-                  <button
-                    onClick={() => setPeriodoProductividad('mes')}
-                    className={`px-2.5 py-1 rounded font-medium transition ${
-                      periodoProductividad === 'mes' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Mes
-                  </button>
-                </div>
-              </div>
+          {/* 8. Indicador Adicional: % Ventas Activas con motivo "Activa y en uso" sobre Total Base */}
+          <div className="bg-slate-900/90 border border-emerald-800/40 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                % Activas &quot;Activa y en uso&quot;
+              </h3>
+              <span className="text-[10px] text-emerald-400 font-mono font-bold">Sobre Total Base</span>
+            </div>
 
-              <div className="h-56">
-                {productividad.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={productividad} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <XAxis dataKey="usuario" stroke="#94a3b8" fontSize={11} />
-                      <YAxis stroke="#94a3b8" fontSize={11} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px' }}
-                      />
-                      <Bar dataKey="gestiones" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-slate-500 text-xs">
-                    No hay gestiones registradas en este período.
-                  </div>
-                )}
+            <div className="relative h-56 flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+                  <Pie
+                    data={stats.dataActivaEnUso}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={68}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    <Cell fill="#10b981" />
+                    <Cell fill="#1e293b" />
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', borderRadius: '8px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-2xl font-black text-emerald-400">
+                  {stats.porcentajeActivaEnUso}%
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">de la base</span>
               </div>
             </div>
 
-            <div className="border-t border-slate-800 pt-2 text-xs text-slate-400 flex items-center justify-between">
-              <span>Total en período: <strong>{productividad.reduce((acc, p) => acc + p.gestiones, 0)}</strong> gestiones</span>
-              <span className="text-[11px] text-slate-500">Segmentadas por usuario responsable (RN10)</span>
+            <div className="flex justify-around text-xs text-slate-300 border-t border-slate-800 pt-2">
+              <span>
+                Activa y en uso: <strong className="text-emerald-400">{stats.activaEnUsoCount}</strong>
+              </span>
+              <span>
+                Total Base: <strong>{stats.totalClientes}</strong>
+              </span>
             </div>
           </div>
         </div>

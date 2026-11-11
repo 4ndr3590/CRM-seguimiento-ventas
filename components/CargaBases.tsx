@@ -266,8 +266,9 @@ export const CargaBases: React.FC<CargaBasesProps> = ({ onCargaCompleta }) => {
             <li className="flex items-start gap-1.5">
               <strong className="text-blue-400 font-mono">Registro Existente:</strong>
               <span>
-                Si la orden ya existe, actualiza <strong>únicamente</strong> el campo <code>Estatus</code>, manteniendo
-                intacto el histórico de gestiones, observaciones y barridos (RN08, RN09).
+                Si la orden ya existe, actualiza <strong>únicamente</strong> los campos{' '}
+                <code>Estatus</code>, <code>Ciclo</code>, <code>Consumo</code>, <code>Entrega de Chip</code> y{' '}
+                <code>Entregado</code>, manteniendo intacto el histórico de gestiones, observaciones y barridos (RN08, RN09).
               </span>
             </li>
           </ul>

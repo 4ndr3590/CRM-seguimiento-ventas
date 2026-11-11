@@ -22,15 +22,17 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Form state
+  // Auto-loaded from DB state
   const [estado, setEstado] = useState<EstadoLinea>('Activo');
   const [entregaChip, setEntregaChip] = useState<EntregaChip>('CAC');
-  const [recibioChip, setRecibioChip] = useState<RecibioChip>('Entregado');
-  const [consumo, setConsumo] = useState<Consumo>('Sí');
-  const [contactabilidad, setContactabilidad] = useState<Contactabilidad>('Contacto efectivo');
-  const [motivo, setMotivo] = useState<MotivoGestion>('Activa y en uso');
-  const [tareaRealizada, setTareaRealizada] = useState<TareaRealizada>('Mensaje de bienvenida');
-  const [ventaCerrada, setVentaCerrada] = useState<VentaCerrada>('No');
+  const [recibioChip, setRecibioChip] = useState<RecibioChip>('NA');
+  const [consumo, setConsumo] = useState<Consumo>('NA');
+
+  // Empty by default for explicit analyst selection on each gestion
+  const [contactabilidad, setContactabilidad] = useState<Contactabilidad | ''>('');
+  const [motivo, setMotivo] = useState<MotivoGestion | ''>('');
+  const [tareaRealizada, setTareaRealizada] = useState<TareaRealizada | ''>('');
+  const [ventaCerrada, setVentaCerrada] = useState<VentaCerrada | ''>('');
   const [observaciones, setObservaciones] = useState<string>('');
 
   useEffect(() => {
@@ -38,17 +40,78 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
       setCatalogos(cats);
     });
 
-    // Preset values if client already had a previous gestion
-    if (cliente?.ultima_gestion) {
-      setEstado(cliente.ultima_gestion.estado);
-      setEntregaChip(cliente.ultima_gestion.entrega_chip);
-      setRecibioChip(cliente.ultima_gestion.recibio_chip);
-      setConsumo(cliente.ultima_gestion.consumo);
-      setContactabilidad(cliente.ultima_gestion.contactabilidad);
-      setMotivo(cliente.ultima_gestion.motivo);
-      setTareaRealizada(cliente.ultima_gestion.tarea_realizada);
-      setVentaCerrada(cliente.ultima_gestion.venta_cerrada);
+    if (!cliente) return;
+
+    const normalizarEntregaChip = (val?: string): EntregaChip => {
+      const lower = (val || '').trim().toLowerCase();
+      if (lower === 'domicilio') return 'Domicilio';
+      if (lower === 'cac') return 'CAC';
+      return (val as EntregaChip) || 'CAC';
+    };
+
+    const normalizarConsumo = (val?: string): Consumo => {
+      const lower = (val || '').trim().toLowerCase();
+      if (lower === 'sí' || lower === 'si') return 'Sí';
+      if (lower === 'no') return 'No';
+      if (lower === 'na' || lower === 'n/a') return 'NA';
+      return (val as Consumo) || 'NA';
+    };
+
+    const mapearEntregadoARecibio = (val?: string): RecibioChip => {
+      const lower = (val || '').trim().toLowerCase();
+      if (lower === 'sí' || lower === 'si' || lower === 'entregado') return 'Entregado';
+      if (lower === 'no' || lower === 'caída' || lower === 'caida' || lower === 'sin registro de entrega') {
+        return 'Sin registro de entrega';
+      }
+      return 'NA';
+    };
+
+    const baseEsMasReciente =
+      !cliente.ultima_gestion ||
+      Boolean(
+        cliente.fecha_actualizacion &&
+          cliente.ultima_gestion.fecha_hora_gestion &&
+          cliente.fecha_actualizacion > cliente.ultima_gestion.fecha_hora_gestion
+      );
+
+    // 1. Auto-cargar Estado de la Línea, Entrega de Chip, ¿Ya Recibió el Chip?, Consumo desde BD
+    setEstado(cliente.ultima_gestion?.estado || 'Activo');
+
+    if (baseEsMasReciente) {
+      setEntregaChip(
+        cliente.entrega_chip
+          ? normalizarEntregaChip(cliente.entrega_chip)
+          : cliente.ultima_gestion?.entrega_chip || 'CAC'
+      );
+      setRecibioChip(
+        cliente.entregado
+          ? mapearEntregadoARecibio(cliente.entregado)
+          : cliente.ultima_gestion?.recibio_chip || 'NA'
+      );
+      setConsumo(
+        cliente.consumo
+          ? normalizarConsumo(cliente.consumo)
+          : cliente.ultima_gestion?.consumo || 'NA'
+      );
+    } else {
+      setEntregaChip(
+        cliente.ultima_gestion?.entrega_chip || normalizarEntregaChip(cliente.entrega_chip)
+      );
+      setRecibioChip(
+        cliente.ultima_gestion?.recibio_chip || mapearEntregadoARecibio(cliente.entregado)
+      );
+      setConsumo(
+        cliente.ultima_gestion?.consumo || normalizarConsumo(cliente.consumo)
+      );
     }
+
+    // 2. Contactabilidad, Motivo de la Gestión, Tarea Realizada y ¿Venta Cerrada? SIEMPRE vacíos por defecto
+    setContactabilidad('');
+    setMotivo('');
+    setTareaRealizada('');
+    setVentaCerrada('');
+    setObservaciones('');
+    setErrorMsg(null);
   }, [cliente]);
 
   if (!cliente) return null;
@@ -56,6 +119,13 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+
+    if (!contactabilidad || !motivo || !tareaRealizada || !ventaCerrada) {
+      setErrorMsg(
+        'Debes seleccionar Contactabilidad, Motivo de la Gestión, Tarea Realizada y ¿Venta Cerrada?.'
+      );
+      return;
+    }
 
     // RN06: Observaciones obligatorias y máximo 200 caracteres
     const obsTrim = observaciones.trim();
@@ -79,10 +149,10 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
           entrega_chip: entregaChip,
           recibio_chip: recibioChip,
           consumo,
-          contactabilidad,
-          motivo,
-          tarea_realizada: tareaRealizada,
-          venta_cerrada: ventaCerrada,
+          contactabilidad: contactabilidad as Contactabilidad,
+          motivo: motivo as MotivoGestion,
+          tarea_realizada: tareaRealizada as TareaRealizada,
+          venta_cerrada: ventaCerrada as VentaCerrada,
           observaciones: obsTrim,
           usuario_responsable: responsable,
         },
@@ -103,7 +173,7 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-8">
+      <div className="bg-slate-900 border border-slate-700 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-8">
         {/* Header */}
         <div className="px-6 py-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
           <div>
@@ -124,7 +194,7 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[75vh]">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[78vh]">
           {errorMsg && (
             <div className="bg-rose-950/60 border border-rose-800 text-rose-300 px-4 py-2.5 rounded-xl text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -132,21 +202,74 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
             </div>
           )}
 
-          {/* Quick info banner */}
-          <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 flex items-center justify-between text-xs text-slate-300">
-            <div>
-              <span className="text-slate-400">Cliente / DN: </span>
-              <strong className="text-white">{cliente.dn_venta || cliente.dn_nuevo || cliente.numero_orden}</strong>
-            </div>
-            <div>
-              <span className="text-slate-400">Tipo: </span>
-              <span className="text-blue-300 font-medium">{cliente.tipo_venta}</span>
-            </div>
-            <div>
-              <span className="text-slate-400">Enrolamiento: </span>
-              <span className={cliente.estatus_enrolamiento === 'Enrolado' ? 'text-emerald-400' : 'text-rose-400'}>
-                {cliente.estatus_enrolamiento}
-              </span>
+          {/* Información General Completa del Cliente */}
+          <div className="bg-slate-800/60 rounded-xl p-4 border border-slate-700/60">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+              Información General del Cliente
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-xs">
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Número de Orden</span>
+                <span className="font-bold text-white font-mono text-xs">{cliente.numero_orden}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Fecha Venta</span>
+                <span className="font-semibold text-slate-200 text-xs">{cliente.fecha_venta || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">DN Venta</span>
+                <span className="font-mono text-slate-200 text-xs">{cliente.dn_venta || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">DN Nuevo</span>
+                <span className="font-mono text-slate-200 text-xs">{cliente.dn_nuevo || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Tipo Venta</span>
+                <span className="inline-block px-1.5 py-0.5 rounded font-medium text-[11px] bg-blue-900/40 text-blue-300 border border-blue-700/50">
+                  {cliente.tipo_venta}
+                </span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Enrolamiento</span>
+                <span
+                  className={`inline-block px-1.5 py-0.5 rounded font-medium text-[11px] ${
+                    cliente.estatus_enrolamiento === 'Enrolado'
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700'
+                      : 'bg-rose-950/80 text-rose-300 border border-rose-700'
+                  }`}
+                >
+                  {cliente.estatus_enrolamiento}
+                </span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Ciclo</span>
+                <span className="font-semibold text-purple-300 text-xs">{cliente.ciclo || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Consumo Base</span>
+                <span className="font-semibold text-cyan-300 text-xs">{cliente.consumo || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Entrega Chip</span>
+                <span className="font-semibold text-amber-300 text-xs">{cliente.entrega_chip || '-'}</span>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block mb-0.5 text-[10px]">Entregado</span>
+                <span
+                  className={`inline-block px-1.5 py-0.5 rounded font-medium text-[11px] ${
+                    cliente.entregado?.toLowerCase() === 'sí' || cliente.entregado?.toLowerCase() === 'si'
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700'
+                      : cliente.entregado?.toLowerCase() === 'caída' || cliente.entregado?.toLowerCase() === 'caida'
+                      ? 'bg-rose-950/80 text-rose-300 border border-rose-700'
+                      : cliente.entregado?.toLowerCase() === 'no'
+                      ? 'bg-amber-950/80 text-amber-300 border border-amber-700'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {cliente.entregado || '-'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -229,10 +352,12 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
                 Contactabilidad *
               </label>
               <select
+                required
                 value={contactabilidad}
-                onChange={(e) => setContactabilidad(e.target.value as Contactabilidad)}
+                onChange={(e) => setContactabilidad(e.target.value as Contactabilidad | '')}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
               >
+                <option value="">-- Seleccionar --</option>
                 {(catalogos?.contactabilidad || [
                   'Contacto efectivo',
                   'Contacto no efectivo',
@@ -252,10 +377,12 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
                 Motivo de la Gestión *
               </label>
               <select
+                required
                 value={motivo}
-                onChange={(e) => setMotivo(e.target.value as MotivoGestion)}
+                onChange={(e) => setMotivo(e.target.value as MotivoGestion | '')}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
               >
+                <option value="">-- Seleccionar --</option>
                 {(catalogos?.motivo || [
                   'No contactado',
                   'No reconoce la venta',
@@ -277,10 +404,12 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
                 Tarea Realizada *
               </label>
               <select
+                required
                 value={tareaRealizada}
-                onChange={(e) => setTareaRealizada(e.target.value as TareaRealizada)}
+                onChange={(e) => setTareaRealizada(e.target.value as TareaRealizada | '')}
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
               >
+                <option value="">-- Seleccionar --</option>
                 {(catalogos?.tarea_realizada || [
                   'Recordatorio de recolección de la SIM',
                   'Mensaje de bienvenida',
@@ -299,14 +428,18 @@ export const ModalNuevaGestion: React.FC<ModalNuevaGestionProps> = ({
                 ¿Venta Cerrada? (RN07) *
               </label>
               <select
+                required
                 value={ventaCerrada}
-                onChange={(e) => setVentaCerrada(e.target.value as VentaCerrada)}
+                onChange={(e) => setVentaCerrada(e.target.value as VentaCerrada | '')}
                 className={`w-full border rounded-lg px-3 py-2 text-xs font-semibold focus:ring-2 focus:outline-none ${
                   ventaCerrada === 'Sí'
                     ? 'bg-emerald-950/80 text-emerald-300 border-emerald-600 focus:ring-emerald-500'
-                    : 'bg-slate-800 text-amber-300 border-slate-700 focus:ring-blue-500'
+                    : ventaCerrada === 'No'
+                    ? 'bg-slate-800 text-amber-300 border-slate-700 focus:ring-blue-500'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 focus:ring-blue-500'
                 }`}
               >
+                <option value="">-- Seleccionar --</option>
                 {(catalogos?.venta_cerrada || ['Sí', 'No']).map((opt) => (
                   <option key={opt} value={opt}>
                     {opt === 'Sí' ? 'Sí (Cierre Definitivo del Caso)' : 'No (Seguimiento Activo)'}

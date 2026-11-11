@@ -7,7 +7,6 @@ import { useAuth } from '@/context/AuthContext';
 import { Navbar } from '@/components/Navbar';
 import { LoginScreen } from '@/components/LoginScreen';
 import { DashboardEjecutivo } from '@/components/DashboardEjecutivo';
-import { GestionBarridos } from '@/components/GestionBarridos';
 import { ConsultasFiltros } from '@/components/ConsultasFiltros';
 import { CargaBases } from '@/components/CargaBases';
 import { ExportacionDatos } from '@/components/ExportacionDatos';
@@ -72,7 +71,7 @@ export default function HomePage() {
       setTabActiva('dashboard');
     } else if (tabActiva === 'auditoria' && !permisos.canAdministrarUsuarios) {
       setTabActiva('dashboard');
-    } else if (tabActiva === 'barridos' && !permisos.canGestionarBarridos) {
+    } else if (tabActiva === 'barridos') {
       setTabActiva('dashboard');
     } else if (tabActiva === 'exportacion' && !permisos.canExportar) {
       setTabActiva('dashboard');
@@ -138,15 +137,6 @@ export default function HomePage() {
                 clientes={clientes}
                 todasGestiones={todasGestiones}
                 onVerClientesSinGestion={handleAbrirSinGestionDesdeDashboard}
-              />
-            )}
-
-            {/* Tab 2: Gestión de Barridos (Módulo 2) */}
-            {tabActiva === 'barridos' && permisos.canGestionarBarridos && (
-              <GestionBarridos
-                clientes={clientes}
-                onSeleccionarParaGestion={(c) => setClienteGestion(c)}
-                onVerHistorial={(c) => setClienteHistorial(c)}
               />
             )}
 

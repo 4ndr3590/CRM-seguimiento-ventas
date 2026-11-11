@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Cliente, EstadoLinea, MotivoGestion, TareaRealizada, TipoVenta, EstatusEnrolamiento } from '@/types/crm';
 import { exportarAExcel, exportarACSV } from '@/lib/exportUtils';
 import { dbService } from '@/lib/dbService';
@@ -21,6 +21,8 @@ import {
   X,
   AlertCircle,
   ShieldAlert,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -52,8 +54,14 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
 
   const [tipoVenta, setTipoVenta] = useState<string>('todos');
   const [enrolamiento, setEnrolamiento] = useState<string>('todos');
+  const [cicloFiltro, setCicloFiltro] = useState<string>('todos');
   const [entregadoFiltro, setEntregadoFiltro] = useState<string>('todos');
+  const [consumoFiltro, setConsumoFiltro] = useState<string>('todos');
   const [soloSinGestion, setSoloSinGestion] = useState<boolean>(filtroInicialSinGestion);
+
+  // Pagination state (100 records per page)
+  const REGISTROS_POR_PAGINA = 100;
+  const [paginaActual, setPaginaActual] = useState<number>(1);
 
   // Date filters
   const [fechaDesde, setFechaDesde] = useState('');
@@ -70,6 +78,37 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
   const [eliminando, setEliminando] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
+  const ciclosDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    clientes.forEach((c) => {
+      if (c.ciclo && c.ciclo.trim()) {
+        set.add(c.ciclo.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [clientes]);
+
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [
+    orden,
+    dnVenta,
+    dnNuevo,
+    tipoVenta,
+    enrolamiento,
+    cicloFiltro,
+    entregadoFiltro,
+    consumoFiltro,
+    soloSinGestion,
+    estado,
+    motivo,
+    tarea,
+    ventaCerrada,
+    fechaDesde,
+    fechaHasta,
+    mesAno,
+  ]);
+
   const limpiarFiltros = () => {
     setOrden('');
     setDnVenta('');
@@ -80,11 +119,14 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
     setVentaCerrada('todos');
     setTipoVenta('todos');
     setEnrolamiento('todos');
+    setCicloFiltro('todos');
     setEntregadoFiltro('todos');
+    setConsumoFiltro('todos');
     setSoloSinGestion(false);
     setFechaDesde('');
     setFechaHasta('');
     setMesAno('');
+    setPaginaActual(1);
   };
 
   const resultados = useMemo(() => {
@@ -118,6 +160,18 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
           if (entCliente !== 'caída' && entCliente !== 'caida') return false;
         } else {
           if (entCliente !== entFiltro) return false;
+        }
+      }
+      if (cicloFiltro !== 'todos') {
+        if ((c.ciclo || '').trim() !== cicloFiltro) return false;
+      }
+      if (consumoFiltro !== 'todos') {
+        const consActual = (c.ultima_gestion?.consumo || c.consumo || 'NA').trim().toLowerCase();
+        const consTarget = consumoFiltro.toLowerCase();
+        if (consTarget === 'sí' || consTarget === 'si') {
+          if (consActual !== 'sí' && consActual !== 'si') return false;
+        } else {
+          if (consActual !== consTarget) return false;
         }
       }
 
@@ -166,7 +220,9 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
     dnNuevo,
     tipoVenta,
     enrolamiento,
+    cicloFiltro,
     entregadoFiltro,
+    consumoFiltro,
     soloSinGestion,
     estado,
     motivo,
@@ -176,6 +232,14 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
     fechaHasta,
     mesAno,
   ]);
+
+  const totalPaginas = Math.max(1, Math.ceil(resultados.length / REGISTROS_POR_PAGINA));
+  const paginaSegura = Math.min(paginaActual, totalPaginas);
+
+  const resultadosPaginados = useMemo(() => {
+    const inicio = (paginaSegura - 1) * REGISTROS_POR_PAGINA;
+    return resultados.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+  }, [resultados, paginaSegura]);
 
   // Bulk Selection Handlers
   const handleToggleSeleccionarTodos = () => {
@@ -337,6 +401,59 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
           </div>
         </div>
 
+        {/* New Required Filters Row: Ciclo, Entregado, Consumo */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">
+              Ciclo
+            </label>
+            <select
+              value={cicloFiltro}
+              onChange={(e) => setCicloFiltro(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            >
+              <option value="todos">Todos los Ciclos</option>
+              {ciclosDisponibles.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">
+              Entregado
+            </label>
+            <select
+              value={entregadoFiltro}
+              onChange={(e) => setEntregadoFiltro(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            >
+              <option value="todos">Todos (Entregado)</option>
+              <option value="Sí">Sí</option>
+              <option value="No">No</option>
+              <option value="Caída">Caída</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">
+              Consumo
+            </label>
+            <select
+              value={consumoFiltro}
+              onChange={(e) => setConsumoFiltro(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            >
+              <option value="todos">Todos (Consumo)</option>
+              <option value="Sí">Sí</option>
+              <option value="No">No</option>
+              <option value="NA">NA</option>
+            </select>
+          </div>
+        </div>
+
         {/* Quick Toggles & Advanced button */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800 text-xs">
           <div className="flex items-center gap-3">
@@ -488,22 +605,6 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                 <option value="Seguimiento primera factura">Seguimiento primera factura</option>
               </select>
             </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">
-                Estado Entregado
-              </label>
-              <select
-                value={entregadoFiltro}
-                onChange={(e) => setEntregadoFiltro(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              >
-                <option value="todos">Todos (Entregado)</option>
-                <option value="Sí">Sí</option>
-                <option value="No">No</option>
-                <option value="Caída">Caída</option>
-              </select>
-            </div>
           </div>
         )}
       </div>
@@ -512,9 +613,22 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
         {/* Table Toolbar */}
         <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div>
-              Resultados: <strong className="text-white text-sm">{resultados.length}</strong> clientes encontrados
+              Mostrando{' '}
+              <strong className="text-white text-sm">
+                {resultados.length === 0 ? 0 : (paginaSegura - 1) * REGISTROS_POR_PAGINA + 1}
+              </strong>
+              {' - '}
+              <strong className="text-white text-sm">
+                {Math.min(paginaSegura * REGISTROS_POR_PAGINA, resultados.length)}
+              </strong>{' '}
+              de <strong className="text-white text-sm">{resultados.length}</strong> clientes
+              {totalPaginas > 1 && (
+                <span className="text-slate-500 ml-2">
+                  (Página {paginaSegura} de {totalPaginas})
+                </span>
+              )}
             </div>
 
             {/* Bulk Deletion Pill for Admin (Item 1) */}
@@ -578,7 +692,7 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                   </td>
                 </tr>
               ) : (
-                resultados.map((cliente) => {
+                resultadosPaginados.map((cliente) => {
                   const ultima = cliente.ultima_gestion;
                   const sinGestion = !ultima;
                   const cerrado = ultima?.venta_cerrada === 'Sí';
@@ -661,6 +775,11 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
                             </span>
                           </div>
                         )}
+                        <div className="mt-1">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border bg-slate-800/80 text-cyan-300 border-slate-700">
+                            Consumo: {cliente.ultima_gestion?.consumo || cliente.consumo || 'NA'}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Última Gestión */}
@@ -753,6 +872,90 @@ export const ConsultasFiltros: React.FC<ConsultasFiltrosProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls (100 records per page) */}
+        {resultados.length > 0 && (
+          <div className="px-4 py-3 border-t border-slate-800 bg-slate-900/70 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="text-slate-400">
+              Página <strong className="text-white">{paginaSegura}</strong> de{' '}
+              <strong className="text-white">{totalPaginas}</strong>{' '}
+              <span className="text-slate-500">({REGISTROS_POR_PAGINA} registros por página)</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setPaginaActual(1)}
+                disabled={paginaSegura === 1}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Primera
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+                disabled={paginaSegura === 1}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Anterior</span>
+              </button>
+
+              {(() => {
+                const pages: (number | '...')[] = [];
+                if (totalPaginas <= 7) {
+                  for (let i = 1; i <= totalPaginas; i++) pages.push(i);
+                } else {
+                  pages.push(1);
+                  if (paginaSegura > 3) pages.push('...');
+                  const start = Math.max(2, paginaSegura - 1);
+                  const end = Math.min(totalPaginas - 1, paginaSegura + 1);
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  if (paginaSegura < totalPaginas - 2) pages.push('...');
+                  pages.push(totalPaginas);
+                }
+                return pages.map((item, idx) =>
+                  item === '...' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-slate-500">
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setPaginaActual(item)}
+                      className={`min-w-[32px] px-2.5 py-1.5 rounded-lg font-semibold border transition ${
+                        item === paginaSegura
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                );
+              })()}
+
+              <button
+                type="button"
+                onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+                disabled={paginaSegura === totalPaginas}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span>Siguiente</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaginaActual(totalPaginas)}
+                disabled={paginaSegura === totalPaginas}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Última
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal: Confirmación de Eliminación Individual */}

@@ -6,7 +6,6 @@ import {
   Shield,
   Database,
   Activity,
-  Layers,
   Search,
   UploadCloud,
   FileSpreadsheet,
@@ -30,7 +29,6 @@ export const Navbar: React.FC<NavbarProps> = ({ tabActiva, setTabActiva }) => {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard Ejecutivo', icon: Activity, permiso: true },
-    { id: 'barridos', label: 'Gestión de Barridos', icon: Layers, permiso: permisos.canGestionarBarridos },
     { id: 'consultas', label: 'Consultas y Filtros', icon: Search, permiso: true },
     { id: 'carga', label: 'Carga de Bases', icon: UploadCloud, permiso: permisos.canCargarBases },
     { id: 'exportacion', label: 'Exportación', icon: FileSpreadsheet, permiso: permisos.canExportar },

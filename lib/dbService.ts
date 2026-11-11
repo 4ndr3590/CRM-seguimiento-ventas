@@ -359,9 +359,38 @@ export const dbService = {
       ] = parts;
 
       const numeroOrden = numeroOrdenRaw.trim();
-      const ciclo = cicloRaw ? cicloRaw.trim() : '';
-      const consumo = consumoRaw ? consumoRaw.trim() : 'NA';
-      const entregaChip = entregaChipRaw ? entregaChipRaw.trim() : 'CAC';
+      const cicloProvided = cicloRaw !== undefined && cicloRaw.trim() !== '';
+      const consumoProvided = consumoRaw !== undefined && consumoRaw.trim() !== '';
+      const entregaChipProvided = entregaChipRaw !== undefined && entregaChipRaw.trim() !== '';
+      const entregadoProvided = entregadoRaw !== undefined && entregadoRaw.trim() !== '';
+
+      const ciclo = cicloProvided ? cicloRaw!.trim() : '';
+
+      let consumo = 'NA';
+      if (consumoProvided) {
+        const consLower = consumoRaw!.trim().toLowerCase();
+        if (consLower === 'si' || consLower === 'sí') {
+          consumo = 'Sí';
+        } else if (consLower === 'no') {
+          consumo = 'No';
+        } else if (consLower === 'na' || consLower === 'n/a') {
+          consumo = 'NA';
+        } else {
+          consumo = consumoRaw!.trim();
+        }
+      }
+
+      let entregaChip = 'CAC';
+      if (entregaChipProvided) {
+        const ecLower = entregaChipRaw!.trim().toLowerCase();
+        if (ecLower === 'cac') {
+          entregaChip = 'CAC';
+        } else if (ecLower === 'domicilio') {
+          entregaChip = 'Domicilio';
+        } else {
+          entregaChip = entregaChipRaw!.trim();
+        }
+      }
 
       let entregado = '';
       if (entregadoRaw) {
@@ -418,15 +447,15 @@ export const dbService = {
 
       const key = numeroOrden.toUpperCase();
       if (clienteExistenteMap.has(key)) {
-        // REGISTRO EXISTENTE: Actualizar únicamente estatus y campos complementarios (RN08, RN09)
+        // REGISTRO EXISTENTE: Actualizar únicamente Estatus, Ciclo, Consumo, Entrega de Chip y Entregado (RN08, RN09)
         const clienteActual = clienteExistenteMap.get(key)!;
         operacionesActualizar.push({
           numero_orden: clienteActual.numero_orden,
           estatus,
-          ciclo: ciclo || clienteActual.ciclo || '',
-          consumo: consumo !== 'NA' ? consumo : (clienteActual.consumo || 'NA'),
-          entrega_chip: entregaChip !== 'CAC' ? entregaChip : (clienteActual.entrega_chip || 'CAC'),
-          entregado: entregado || clienteActual.entregado || '',
+          ciclo: cicloProvided ? ciclo : (clienteActual.ciclo ?? ''),
+          consumo: consumoProvided ? consumo : (clienteActual.consumo ?? 'NA'),
+          entrega_chip: entregaChipProvided ? entregaChip : (clienteActual.entrega_chip ?? 'CAC'),
+          entregado: entregadoProvided ? entregado : (clienteActual.entregado ?? ''),
         });
         resumen.actualizados++;
       } else {
@@ -480,10 +509,10 @@ export const dbService = {
         const ref = doc(firestore, 'clientes', u.numero_orden);
         batch.update(ref, {
           estatus_enrolamiento: u.estatus,
-          ...(u.ciclo ? { ciclo: u.ciclo } : {}),
-          ...(u.consumo ? { consumo: u.consumo } : {}),
-          ...(u.entrega_chip ? { entrega_chip: u.entrega_chip } : {}),
-          ...(u.entregado ? { entregado: u.entregado } : {}),
+          ...(u.ciclo !== undefined ? { ciclo: u.ciclo } : {}),
+          ...(u.consumo !== undefined ? { consumo: u.consumo } : {}),
+          ...(u.entrega_chip !== undefined ? { entrega_chip: u.entrega_chip } : {}),
+          ...(u.entregado !== undefined ? { entregado: u.entregado } : {}),
           fecha_actualizacion: nowISO,
         });
       });
@@ -491,7 +520,7 @@ export const dbService = {
       operacionesProcesadas += chunk.length;
       if (onProgress) {
         const pct = Math.min(95, Math.round((operacionesProcesadas / Math.max(1, totalOperaciones)) * 100));
-        onProgress(pct, `Actualizando estatus en Cloud Firestore (${operacionesProcesadas} de ${totalOperaciones})...`);
+        onProgress(pct, `Actualizando registros existentes en Cloud Firestore (${operacionesProcesadas} de ${totalOperaciones})...`);
       }
     }
 
